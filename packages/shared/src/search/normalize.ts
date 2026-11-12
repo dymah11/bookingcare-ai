@@ -21,10 +21,14 @@ export function toNfc(input: string): string {
   return input.normalize('NFC')
 }
 
-/** Bỏ thẻ HTML (kể cả script/style) và giải mã entity cơ bản. */
+/** Bỏ thẻ HTML (kể cả script/style), giải mã entity cơ bản và gộp khoảng trắng. */
 export function stripHtml(input: string): string {
   const withoutBlocks = input.replace(HTML_BLOCKS, ' ').replace(HTML_TAGS, ' ')
-  return withoutBlocks.replace(/&[a-z#0-9]+;/gi, (entity) => HTML_ENTITIES[entity.toLowerCase()] ?? entity)
+  const decoded = withoutBlocks.replace(
+    /&[a-z#0-9]+;/gi,
+    (entity) => HTML_ENTITIES[entity.toLowerCase()] ?? entity,
+  )
+  return collapseWhitespace(decoded)
 }
 
 export function collapseWhitespace(input: string): string {

@@ -5,8 +5,8 @@ import { pathToFileURL } from 'node:url'
 import {
   createLogger,
   createRetriever,
+  GeminiEmbedder,
   normalizeText,
-  OpenAIEmbedder,
   parseRetrievalIndex,
   retrievalEvalFileSchema,
   RETRIEVAL_INDEX_FILENAME,
@@ -154,11 +154,11 @@ async function main(): Promise<void> {
 
   // 3. Embedding cho truy vấn (tùy chọn).
   const embedder =
-    config.env.OPENAI_API_KEY.trim() === ''
+    config.env.GEMINI_API_KEY.trim() === ''
       ? null
-      : new OpenAIEmbedder({
-          apiKey: config.env.OPENAI_API_KEY,
-          model: config.env.EMBEDDING_MODEL,
+      : new GeminiEmbedder({
+          apiKey: config.env.GEMINI_API_KEY,
+          model: config.env.GEMINI_EMBEDDING_MODEL,
         })
 
   const retriever = createRetriever(index, embedder)

@@ -62,13 +62,17 @@ export {
   chunkEntities,
   chunkEntity,
   dedupeChunks,
+  enrichSpecialtyLabels,
   MAX_CHUNK_TOKENS,
   specialtyLabel,
 } from './chunk.js'
 export type { Chunk, ChunkMetadata } from './chunk.js'
 
-export { DEFAULT_EMBEDDING_MODEL, OpenAIEmbedder } from './embeddings.js'
-export type { OpenAIEmbedderOptions, QueryEmbedder } from './embeddings.js'
+export { DEFAULT_EMBEDDING_MODEL, GeminiEmbedder } from './embeddings.js'
+export type { GeminiEmbedderOptions, QueryEmbedder } from './embeddings.js'
+
+export { buildThinkingConfig, generateContent, GEMINI_API_BASE } from './gemini.js'
+export type { GenerateContentOptions } from './gemini.js'
 
 export {
   BM25_B,

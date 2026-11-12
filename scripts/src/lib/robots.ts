@@ -64,12 +64,21 @@ export function parseRobots(content: string, userAgent: string): RobotsRules {
 }
 
 /**
- * `Disallow` chặn đường dẫn, trừ khi có `Allow` khớp (quy tắc ưu tiên allow).
+ * `Disallow` chặn đường dẫn. Nếu cả `Allow` và `Disallow` cùng khớp thì rule
+ * dài hơn thắng (đúng theo spec robots.txt).
  */
 export function isPathAllowed(rules: RobotsRules, pathname: string): boolean {
-  const disallowed = rules.disallow.some((pattern) => pattern !== '' && pathname.startsWith(pattern))
-  if (!disallowed) {
+  const disallowLength = rules.disallow
+    .filter((pattern) => pattern !== '' && pathname.startsWith(pattern))
+    .reduce((longest, pattern) => Math.max(longest, pattern.length), 0)
+
+  if (disallowLength === 0) {
     return true
   }
-  return rules.allow.some((pattern) => pattern !== '' && pathname.startsWith(pattern))
+
+  const allowLength = rules.allow
+    .filter((pattern) => pattern !== '' && pathname.startsWith(pattern))
+    .reduce((longest, pattern) => Math.max(longest, pattern.length), 0)
+
+  return allowLength > disallowLength
 }

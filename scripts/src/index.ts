@@ -11,8 +11,9 @@ import {
   crawledEntityListSchema,
   dedupeChunks,
   dedupeEntities,
+  enrichSpecialtyLabels,
   ENTITY_FILE_NAMES,
-  OpenAIEmbedder,
+  GeminiEmbedder,
   RETRIEVAL_INDEX_FILENAME,
   serializeTermIndex,
   type CrawledEntity,
@@ -89,7 +90,11 @@ async function main(): Promise<void> {
 
   const rawEntities = await loadEntities(config.processedDir)
   const entities = dedupeEntities(rawEntities.map(cleanEntity))
-  const chunks = dedupeChunks(chunkEntities(entities))
+
+  // Nhãn chuyên khoa lấy từ id là slug không dấu ("tim mach") — thay bằng tên
+  // thật trong metadata ("Tim mạch") khi đã có catalog.
+  const nameById = new Map(entities.map((entity) => [entity.id, entity.name]))
+  const chunks = enrichSpecialtyLabels(dedupeChunks(chunkEntities(entities)), nameById)
 
   logger.info('corpus_ready', {
     raw: rawEntities.length,
@@ -101,23 +106,23 @@ async function main(): Promise<void> {
   const bm25Unaccented = serializeTermIndex(buildTermIndex(documents.unaccented))
   const bm25Accented = serializeTermIndex(buildTermIndex(documents.accented))
 
-  // Embedding là tùy chọn: thiếu OPENAI_API_KEY thì index vẫn dùng được với BM25.
+  // Embedding là tùy chọn: thiếu GEMINI_API_KEY thì index vẫn dùng được với BM25.
   let embeddings: number[][] = []
   let embeddingModel = ''
 
-  if (config.env.OPENAI_API_KEY.trim() !== '' && chunks.length > 0) {
-    const embedder = new OpenAIEmbedder({
-      apiKey: config.env.OPENAI_API_KEY,
-      model: config.env.EMBEDDING_MODEL,
+  if (config.env.GEMINI_API_KEY.trim() !== '' && chunks.length > 0) {
+    const embedder = new GeminiEmbedder({
+      apiKey: config.env.GEMINI_API_KEY,
+      model: config.env.GEMINI_EMBEDDING_MODEL,
     })
     embeddings = await embedder.embedMany(chunks.map((chunk) => chunk.text))
-    embeddingModel = config.env.EMBEDDING_MODEL
+    embeddingModel = config.env.GEMINI_EMBEDDING_MODEL
     logger.info('embeddings_built', { model: embeddingModel, count: embeddings.length })
   } else {
     logger.warn('embeddings_skipped', {
       reason:
-        config.env.OPENAI_API_KEY.trim() === ''
-          ? 'Thiếu OPENAI_API_KEY — chỉ dùng BM25'
+        config.env.GEMINI_API_KEY.trim() === ''
+          ? 'Thiếu GEMINI_API_KEY — chỉ dùng BM25'
           : 'Không có chunk để embedding',
     })
   }

@@ -10,6 +10,6 @@ export type AppDependencies = {
   store: RetrievalStore
   drafts: BookingDraftStore
   sessions: SessionStore
-  /** `null` khi chưa cấu hình `ANTHROPIC_API_KEY`. */
+  /** `null` khi chưa cấu hình `GEMINI_API_KEY`. */
   agent: BookingAssistant | null
 }

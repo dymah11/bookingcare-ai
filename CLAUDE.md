@@ -21,14 +21,21 @@ Trợ lý AI tìm kiếm, hỏi đáp và đặt lịch khám dựa trên dữ l
 
 ## Model
 
-| Vai trò | Model | Reasoning |
-| --- | --- | --- |
-| Trợ lý (assistant) | Claude Haiku 5.5 (`claude-haiku-5.5`) | tối đa `medium` |
-| Judge (eval) | GPT-5.4 (`gpt-5.4`) | tối đa `medium` |
-| Embedding (truy xuất) | `text-embedding-3-small` | — |
+Toàn bộ suy luận dùng **Google Gemini** (một API key cho cả 3 vai trò).
 
-Model ID đọc từ biến môi trường `ASSISTANT_MODEL` / `JUDGE_MODEL` /
-`EMBEDDING_MODEL` (xem `.env.example`), không hardcode trong mã nguồn.
+| Vai trò | Model (mặc định) | Reasoning |
+| --- | --- | --- |
+| Trợ lý (assistant) | `gemini-2.5-flash` | `GEMINI_THINKING_LEVEL` / `GEMINI_THINKING_BUDGET` |
+| Judge (eval) | `gemini-2.5-flash` | như trên |
+| Embedding (truy xuất) | `gemini-embedding-001` | — |
+
+Model ID đọc từ biến môi trường `GEMINI_MODEL` / `GEMINI_JUDGE_MODEL` /
+`GEMINI_EMBEDDING_MODEL` (xem `.env.example`), không hardcode trong mã nguồn.
+
+**Suy luận:** dòng Gemini 3+ dùng `thinkingConfig.thinkingLevel`
+(`low` | `medium` | `high`), dòng Gemini 2.5 dùng `thinkingConfig.thinkingBudget`
+(số token). `buildThinkingConfig()` trong `packages/shared/src/gemini.ts` chọn đúng
+tham số theo tên model để không gửi tham số không hợp lệ.
 
 ## Ràng buộc mỗi lượt hội thoại
 
@@ -82,8 +89,8 @@ eval/           # cases + results
 
 ## Agent (apps/api/src/agent)
 
-- **Model**: Claude Haiku 5.5 (`claude-haiku-5-5`), `maxTokens: 500`, reasoning
-  `medium` qua `ASSISTANT_EFFORT`.
+- **Model**: Gemini (`GEMINI_MODEL`, mặc định `gemini-2.5-flash`), `maxOutputTokens: 500`,
+  suy luận theo `GEMINI_THINKING_LEVEL` / `GEMINI_THINKING_BUDGET`.
 - **System prompt**: [`apps/api/prompts/system.vi.md`](apps/api/prompts/system.vi.md) —
   tiếng Việt, chỉ dựa trên dữ liệu truy xuất, nói rõ khi không có dữ liệu,
   không chẩn đoán/kê đơn, nhắc gọi cấp cứu (115) khi có dấu hiệu khẩn cấp,
@@ -135,10 +142,10 @@ Cấu trúc URL của bookingcare.vn (Next.js) — **đọc từ trang chủ**, 
   và luôn kèm tên thực thể. Metadata: `type`, `id`, `name`, `specialty`, `area`, `url`,
   `specialtyIds`.
 - **Tìm kiếm lai**: BM25 trên token **bỏ dấu** + BM25 trên token **có dấu** +
-  embedding (`text-embedding-3-small`), gộp bằng **Reciprocal Rank Fusion** (k = 60).
+  embedding (`gemini-embedding-001`), gộp bằng **Reciprocal Rank Fusion** (k = 60).
 - **Index lưu file**: `data/processed/retrieval-index.json` — không dùng DB ngoài,
   nạp nhanh lúc khởi động.
-- Thiếu `OPENAI_API_KEY` → bỏ nhánh embedding, tìm kiếm chỉ dùng BM25 (vẫn chạy được).
+- Thiếu `GEMINI_API_KEY` → bỏ nhánh embedding, tìm kiếm chỉ dùng BM25 (vẫn chạy được).
 
 ## Lệnh thường dùng
 

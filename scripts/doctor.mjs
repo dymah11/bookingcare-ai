@@ -28,7 +28,7 @@ if (!existsSync(envPath)) {
 } else {
   ok('.env tồn tại')
   const env = readFileSync(envPath, 'utf8')
-  for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) {
+  for (const key of ['GEMINI_API_KEY']) {
     const line = env.split('\n').find((item) => item.startsWith(`${key}=`))
     const value = line?.slice(key.length + 1).trim() ?? ''
     if (value === '') warn(`${key} chưa được điền`)

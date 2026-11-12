@@ -41,7 +41,9 @@ describe('isPathAllowed', () => {
   })
 
   it('allow thắng khi disallow cùng tiền tố', () => {
-    expect(isPathAllowed(rules, '/api/public')).toBe(true)
-    expect(isPathAllowed(rules, '/api/secret')).toBe(false)
+    // Nhóm `*` mới có Disallow: /api + Allow: /api/public
+    const starRules = parseRobots(ROBOTS, 'some-other-bot/1.0')
+    expect(isPathAllowed(starRules, '/api/public')).toBe(true)
+    expect(isPathAllowed(starRules, '/api/secret')).toBe(false)
   })
 })

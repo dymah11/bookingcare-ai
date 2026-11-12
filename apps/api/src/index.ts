@@ -8,11 +8,11 @@ async function main(): Promise<void> {
   logger.info('index_loaded', {
     indexSize: store.size,
     catalogSize: catalog.size,
-    embeddings: env.OPENAI_API_KEY.trim() !== '',
+    embeddings: env.GEMINI_API_KEY.trim() !== '',
   })
 
   if (!assistant) {
-    logger.warn('assistant_disabled', { reason: 'Thiếu ANTHROPIC_API_KEY' })
+    logger.warn('assistant_disabled', { reason: 'Thiếu GEMINI_API_KEY' })
   }
 
   const app = createApp({ env, logger, store, drafts, sessions, agent: assistant })

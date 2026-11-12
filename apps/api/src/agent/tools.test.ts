@@ -40,9 +40,9 @@ describe('create_booking_draft', () => {
     const ctx = await buildContext()
     const tool = createBookingDraftTool(ctx)
 
-    const output = await tool.invoke({ service_or_doctor: 'Khám tim mạch' })
+    const output = await tool.run({ service_or_doctor: 'Khám tim mạch' })
 
-    expect(String(output)).toContain('Còn thiếu thông tin')
+    expect(output).toContain('Còn thiếu thông tin')
     expect(ctx.bookings).toHaveLength(0)
   })
 
@@ -50,9 +50,9 @@ describe('create_booking_draft', () => {
     const ctx = await buildContext()
     const tool = createBookingDraftTool(ctx)
 
-    const output = await tool.invoke(baseInput)
+    const output = await tool.run(baseInput)
 
-    expect(String(output)).toContain('xác nhận')
+    expect(output).toContain('xác nhận')
     expect(ctx.bookings).toHaveLength(0)
     expect(ctx.session.pendingBooking).not.toBeNull()
   })
@@ -61,9 +61,9 @@ describe('create_booking_draft', () => {
     const ctx = await buildContext()
     const tool = createBookingDraftTool(ctx)
 
-    const output = await tool.invoke({ ...baseInput, confirm: true })
+    const output = await tool.run({ ...baseInput, confirm: true })
 
-    expect(String(output)).toContain('BC-')
+    expect(output).toContain('BC-')
     expect(ctx.bookings).toHaveLength(1)
     expect(ctx.bookings[0]?.url).toContain('bookingcare.vn')
     expect(ctx.session.pendingBooking).toBeNull()
@@ -73,9 +73,9 @@ describe('create_booking_draft', () => {
     const ctx = await buildContext()
     const tool = createBookingDraftTool(ctx)
 
-    const output = await tool.invoke({ ...baseInput, preferred_date: '01/12/2026', confirm: true })
+    const output = await tool.run({ ...baseInput, preferred_date: '01/12/2026', confirm: true })
 
-    expect(String(output)).toContain('chưa đúng định dạng')
+    expect(output).toContain('chưa đúng định dạng')
     expect(ctx.bookings).toHaveLength(0)
   })
 })

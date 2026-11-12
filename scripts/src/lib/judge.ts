@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { buildThinkingConfig, generateContent, type Env } from '@bookingcare/shared'
 
 export type JudgeSource = {
   title: string
@@ -29,12 +30,6 @@ const verdictSchema = z.object({
   score: z.number().min(0).max(1),
   passed: z.boolean(),
   reason: z.string(),
-})
-
-const judgeResponseSchema = z.object({
-  choices: z
-    .array(z.object({ message: z.object({ content: z.string().nullable() }) }))
-    .min(1),
 })
 
 export const JUDGE_SYSTEM_PROMPT = `Bạn là judge đánh giá chất lượng câu trả lời của trợ lý BookingCare.
@@ -70,7 +65,7 @@ export function parseVerdict(content: string): JudgeVerdict {
   }
 
   try {
-    const json: unknown = JSON.parse(match[0]) as unknown
+    const json = JSON.parse(match[0]) as unknown
     const parsed = verdictSchema.safeParse(json)
     if (!parsed.success) {
       return { score: 0, passed: false, reason: 'Judge trả về JSON không đúng schema' }
@@ -82,47 +77,22 @@ export function parseVerdict(content: string): JudgeVerdict {
 }
 
 /**
- * Gọi OpenAI Chat Completions để chấm điểm.
- *
- * Dùng REST API trực tiếp (không qua SDK) để kiểm soát chắt chẽ tham số
- * `reasoning_effort` theo ràng buộc trong CLAUDE.md.
+ * Chấm điểm bằng Gemini (`responseMimeType: application/json` để ép JSON).
  */
 export async function judgeWithModel(options: {
-  apiKey: string
-  model: string
+  env: Env
   input: JudgeInput
   fetchImpl?: typeof fetch
 }): Promise<JudgeVerdict> {
-  const fetchImpl = options.fetchImpl ?? fetch
-
-  const response = await fetchImpl('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${options.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      reasoning_effort: 'medium',
-      max_completion_tokens: 1200,
-      messages: [
-        { role: 'system', content: JUDGE_SYSTEM_PROMPT },
-        { role: 'user', content: JSON.stringify(options.input) },
-      ],
-    }),
+  const content = await generateContent({
+    apiKey: options.env.GEMINI_API_KEY,
+    model: options.env.GEMINI_JUDGE_MODEL,
+    systemInstruction: JUDGE_SYSTEM_PROMPT,
+    prompt: JSON.stringify(options.input),
+    json: true,
+    thinkingConfig: buildThinkingConfig(options.env.GEMINI_JUDGE_MODEL, options.env),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   })
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '')
-    throw new Error(`Judge API lỗi (HTTP ${response.status}): ${detail.slice(0, 500)}`)
-  }
-
-  const payload = (await response.json()) as unknown
-  const parsed = judgeResponseSchema.safeParse(payload)
-  if (!parsed.success) {
-    throw new Error('Judge trả về payload không đúng schema')
-  }
-
-  const content = parsed.data.choices[0]?.message.content ?? ''
   return parseVerdict(content)
 }

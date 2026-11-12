@@ -14,17 +14,26 @@ export const envSchema = z.object({
   API_BASE_URL: z.string().url().default('http://localhost:3001'),
   WEB_ORIGIN: z.string().min(1).default('http://localhost:5173'),
 
-  ANTHROPIC_API_KEY: z.string().default(''),
-  ASSISTANT_MODEL: z.string().min(1).default('claude-haiku-5.5'),
-  /** Mức reasoning của Claude Haiku 5.5: low | medium | high. */
-  ASSISTANT_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
+  /** API key của Google AI Studio / Gemini. Một key dùng cho cả 3 vai trò. */
+  GEMINI_API_KEY: z.string().default(''),
+  /** Model trợ lý hội thoại. */
+  GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+  /** Model judge dùng khi chấm chất lượng. */
+  GEMINI_JUDGE_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+  /** Model embedding cho tìm kiếm lai (BM25 + vector). */
+  GEMINI_EMBEDDING_MODEL: z.string().min(1).default('gemini-embedding-001'),
+  /**
+   * Mức reasoning cho dòng Gemini 3+ (`thinkingConfig.thinkingLevel`).
+   * Bỏ trống nếu model của bạn là dòng 2.5 — dùng `GEMINI_THINKING_BUDGET`.
+   */
+  GEMINI_THINKING_LEVEL: z.enum(['low', 'medium', 'high']).optional(),
+  /**
+   * Ngân sách suy luận cho dòng Gemini 2.5 (`thinkingConfig.thinkingBudget`).
+   * `0` = tắt suy luận.
+   */
+  GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).default(1024),
   /** Số lượt hội thoại gần nhất được giữ nguyên văn trong lịch sử. */
   CHAT_HISTORY_TURNS: z.coerce.number().int().min(1).max(50).default(6),
-
-  OPENAI_API_KEY: z.string().default(''),
-  JUDGE_MODEL: z.string().min(1).default('gpt-5.4'),
-  /** Model embedding cho tìm kiếm lai (BM25 + vector). */
-  EMBEDDING_MODEL: z.string().min(1).default('text-embedding-3-small'),
 
   DATA_DIR: z.string().min(1).default('./data'),
   BOOKINGCARE_BASE_URL: z.string().url().default('https://bookingcare.vn'),

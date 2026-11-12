@@ -96,7 +96,7 @@ async function main(): Promise<void> {
   const runtime = await createRuntime()
 
   if (runtime.assistant === null) {
-    console.error('Chưa cấu hình ANTHROPIC_API_KEY — không chạy được trợ lý.')
+    console.error('Chưa cấu hình GEMINI_API_KEY — không chạy được trợ lý.')
     process.exitCode = 1
     return
   }

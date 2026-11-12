@@ -117,8 +117,7 @@ async function main(): Promise<void> {
       })
 
       const judge = await judgeWithModel({
-        apiKey: config.env.OPENAI_API_KEY,
-        model: config.env.JUDGE_MODEL,
+        env: config.env,
         input: {
           question: testCase.question,
           answer: response.answer,
@@ -171,7 +170,7 @@ async function main(): Promise<void> {
 
   const report = {
     createdAt: new Date().toISOString(),
-    model: config.env.JUDGE_MODEL,
+    model: config.env.GEMINI_JUDGE_MODEL,
     total: results.length,
     passed: results.filter((result) => result.passed).length,
     constraints: {

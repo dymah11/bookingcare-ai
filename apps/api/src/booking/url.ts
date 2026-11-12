@@ -7,13 +7,23 @@ import type { BookingDraftInput } from '@bookingcare/shared'
  * hiện tại — cần đối chiếu lại với bookingcare.vn trước khi đưa vào production
  * (xem mục "Giới hạn đã biết" trong README).
  */
+function setIfPresent(
+  params: URLSearchParams,
+  key: string,
+  value: string | undefined,
+): void {
+  if (value !== undefined && value !== '') {
+    params.set(key, value)
+  }
+}
+
 export function buildBookingCareUrl(baseUrl: string, input: BookingDraftInput): string {
   const params = new URLSearchParams()
 
-  if (input.specialtyId !== '') params.set('chuyen_khoa', input.specialtyId)
-  if (input.hospitalId !== '') params.set('benh_vien', input.hospitalId)
-  if (input.serviceId !== '') params.set('dich_vu', input.serviceId)
-  if (input.doctorId !== '') params.set('bac_si', input.doctorId)
+  setIfPresent(params, 'chuyen_khoa', input.specialtyId)
+  setIfPresent(params, 'benh_vien', input.hospitalId)
+  setIfPresent(params, 'dich_vu', input.serviceId)
+  setIfPresent(params, 'bac_si', input.doctorId)
 
   params.set('ngay_kham', input.date)
   params.set('gio_kham', input.time)

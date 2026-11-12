@@ -43,7 +43,7 @@ export function createChatRouter(deps: AppDependencies): ReturnType<typeof Route
       res.status(503).json({
         error: {
           code: 'AGENT_UNAVAILABLE',
-          message: 'Trợ lý chưa được cấu hình (thiếu ANTHROPIC_API_KEY)',
+          message: 'Trợ lý chưa được cấu hình (thiếu GEMINI_API_KEY)',
         },
       })
       return

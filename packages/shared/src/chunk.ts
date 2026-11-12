@@ -5,7 +5,10 @@ export type ChunkMetadata = {
   type: string
   id: string
   name: string
-  /** Chuyên khoa hiển thị, ví dụ "tim mạch". */
+  /**
+   * Chuyên khoa hiển thị. Mặc định là slug không dấu ("tim mach"); khi đã có
+   * catalog thì `enrichSpecialtyLabels()` thay bằng tên thật ("Tim mạch").
+   */
   specialty: string
   /** Khu vực hiển thị, ví dụ "Quận 1, TP.HCM". */
   area: string
@@ -26,7 +29,12 @@ export const MAX_CHUNK_TOKENS = 500
 /** Tiền tố loại thực thể dùng trong id. */
 const ENTITY_TYPE_PREFIXES = ['specialty', 'facility', 'doctor', 'service']
 
-/** Bỏ tiền tố loại và ký tự gạch nối: "specialty-tim-mach" → "tim mạch". */
+/**
+ * Bỏ tiền tố loại và ký tự gạch nối: "specialty-tim-mach" → "tim mach".
+ *
+ * Id là slug không dấu nên nhãn suy ra được cũng không dấu — dùng
+ * `enrichSpecialtyLabels()` để thay bằng tên thật khi đã có catalog.
+ */
 export function specialtyLabel(specialtyIds: string[]): string {
   return specialtyIds
     .map((id) => {
@@ -36,6 +44,27 @@ export function specialtyLabel(specialtyIds: string[]): string {
     })
     .filter((label) => label !== '')
     .join(', ')
+}
+
+/**
+ * Thay nhãn chuyên khoa trong metadata bằng tên hiển thị thật
+ * ("tim mach" → "Tim mạch") khi đã biết id → name.
+ */
+export function enrichSpecialtyLabels(
+  chunks: Chunk[],
+  nameById: Map<string, string>,
+): Chunk[] {
+  return chunks.map((chunk) => {
+    if (chunk.metadata.specialtyIds.length === 0) {
+      return chunk
+    }
+
+    const labels = chunk.metadata.specialtyIds.map(
+      (id) => nameById.get(id) ?? specialtyLabel([id]),
+    )
+
+    return { ...chunk, metadata: { ...chunk.metadata, specialty: labels.join(', ') } }
+  })
 }
 
 export function buildMetadata(entity: CrawledEntity): ChunkMetadata {

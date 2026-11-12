@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "@bookingcare/shared": "workspace:*",
-    "@langchain/anthropic": "^0.3.0",
     "@langchain/core": "^0.3.0",
+    "@langchain/google-genai": "^1.0.0",
     "@langchain/langgraph": "^0.2.0",
     "dotenv": "^16.4.0",
     "express": "^5.0.0",

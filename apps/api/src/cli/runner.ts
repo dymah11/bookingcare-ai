@@ -50,7 +50,9 @@ export async function runConversation(
       } else if (event.type === 'booking') {
         bookings.push(event.booking)
       } else if (event.type === 'done') {
-        toolsUsed.push(...event.usage.toolsUsed)
+        for (const tool of event.usage.toolsUsed) {
+          toolsUsed.add(tool)
+        }
         toolRounds += event.usage.toolRounds
         inputTokens += event.usage.inputTokens
         outputTokens += event.usage.outputTokens

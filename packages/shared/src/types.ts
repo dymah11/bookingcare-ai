@@ -32,10 +32,10 @@ export type ChatResponse = {
 }
 
 export type BookingDraftInput = {
-  specialtyId: string
-  hospitalId: string
-  serviceId: string
-  doctorId: string
+  specialtyId?: string
+  hospitalId?: string
+  serviceId?: string
+  doctorId?: string
   date: string
   time: string
   patientName: string

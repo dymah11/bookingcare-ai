@@ -37,12 +37,15 @@ eval/
 
 ```bash
 pnpm install
-cp .env.example .env      # rồi điền ANTHROPIC_API_KEY / OPENAI_API_KEY
+cp .env.example .env      # rồi điền GEMINI_API_KEY
 ```
 
-Không có API key nào được hardcode trong mã nguồn. Thiếu `ANTHROPIC_API_KEY` thì API
-vẫn khởi động được; chỉ endpoint `/api/chat` trả `503`. Thiếu `OPENAI_API_KEY` thì
-tìm kiếm lai chỉ dùng BM25 (không có nhánh embedding).
+Toàn bộ suy luận dùng **Google Gemini** — một API key cho cả trợ lý, judge và embedding
+(lấy ở [aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
+
+Không có API key nào được hardcode trong mã nguồn. Thiếu `GEMINI_API_KEY` thì API
+vẫn khởi động được; chỉ endpoint `/api/chat` trả `503`. Thiếu key thì tìm kiếm lai
+chỉ dùng BM25 (không có nhánh embedding).
 
 ## Chạy
 
@@ -75,7 +78,7 @@ pnpm eval           # scripts/eval.ts → chấm chất lượng câu trả lờ
     rồi ra 0 bản ghi. Mọi lỗi tải trang đều được log kèm lý do ở `crawl_fetch_failed`.
     Chạy `pnpm doctor` để kiểm tra nhanh môi trường.
 - `index` làm sạch → khử trùng lặp → chunk (≤ ~500 token) → dựng BM25 (bỏ dấu + có
-  dấu) → embedding (nếu có `OPENAI_API_KEY`) → ghi `retrieval-index.json`.
+  dấu) → embedding (nếu có `GEMINI_API_KEY`) → ghi `retrieval-index.json`.
 - `eval:retrieval` đọc `eval/retrieval-queries.json` và tính **recall@5** + **MRR**.
 
 > `pnpm seed` ghi dữ liệu **tổng hợp** (tên đều có tiền tố "Mẫu") để chạy thử khi chưa
@@ -88,7 +91,7 @@ pnpm eval           # scripts/eval.ts → chấm chất lượng câu trả lờ
 | Làm sạch | Unicode NFC → bỏ HTML/entity → gộp khoảng trắng; khử trùng lặp theo tên + mô tả |
 | Chunking | 1 thực thể = 1 chunk; mô tả dài cắt theo câu, mỗi chunk ≤ ~500 token, luôn kèm tên |
 | Metadata | `type`, `id`, `name`, `specialty`, `area`, `url`, `specialtyIds` |
-| Xếp hạng | BM25 bỏ dấu + BM25 có dấu + embedding (`text-embedding-3-small`) |
+| Xếp hạng | BM25 bỏ dấu + BM25 có dấu + embedding (`gemini-embedding-001`) |
 | Gộp | Reciprocal Rank Fusion (k = 60) |
 | Lưu trữ | `data/processed/retrieval-index.json` — nạp nhanh lúc khởi động, không dùng DB ngoài |
 
@@ -97,8 +100,14 @@ dùng chung đúng một code path.
 
 ## Agent (LangGraph)
 
-Trợ lý hội thoại nằm ở `apps/api/src/agent`, chạy trên **Claude Haiku 5.5**
-(`maxTokens: 500`, reasoning `medium` qua `ASSISTANT_EFFORT`).
+Trợ lý hội thoại nằm ở `apps/api/src/agent`, chạy trên **Gemini**
+(`GEMINI_MODEL`, mặc định `gemini-2.5-flash`; `maxOutputTokens: 500`, suy luận theo
+`GEMINI_THINKING_LEVEL` cho dòng Gemini 3+ hoặc `GEMINI_THINKING_BUDGET` cho dòng 2.5).
+
+> Tham số suy luận được gửi qua kênh passthrough `modelKwargs` của
+> `@langchain/google-genai`. Nếu model của bạn không nhận tham số này, API vẫn
+> chạy bình thường (chỉ mất phần suy luận) — đặt `GEMINI_THINKING_BUDGET=0` để
+> tắt hẳn.
 
 **Tool** (mô tả tiếng Việt, validate bằng zod):
 
@@ -176,7 +185,7 @@ pnpm format          # prettier
   `pnpm crawl --probe <url>` để calibrate khi markup thay đổi.
 - **Chưa có dữ liệu crawl thật**: `data/processed/` đang là dữ liệu mẫu tổng hợp nếu bạn
   chưa chạy `pnpm crawl --all`. Recall@5 đo được trên dữ liệu mẫu sẽ cao hơn thực tế.
-- **Embedding tốn phí**: `pnpm index` gọi OpenAI embeddings theo batch cho mỗi chunk.
+- **Embedding tốn phí**: `pnpm index` gọi Gemini embeddings theo batch cho mỗi chunk.
   Với corpus lớn nên giới hạn số chunk hoặc chạy lại theo lô.
 
 ## License

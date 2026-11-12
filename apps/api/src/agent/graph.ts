@@ -1,4 +1,4 @@
-import { ChatAnthropic } from '@langchain/anthropic'
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import {
   AIMessage,
   HumanMessage,
@@ -6,14 +6,14 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages'
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
-import type { Env, Logger } from '@bookingcare/shared'
+import { buildThinkingConfig, type Env, type Logger } from '@bookingcare/shared'
 import type { BookingDraftStore } from '../booking/drafts.js'
 import type { EntityCatalog } from '../retrieval/catalog.js'
 import type { RetrievalStore } from '../retrieval/store.js'
 import { appendTurn, buildModelMessages, DEFAULT_KEEP_TURNS } from './history.js'
 import { loadSystemPrompt } from './prompts.js'
 import type { SessionStore } from './session.js'
-import { createAgentTools, type ToolContext } from './tools.js'
+import { createAgentTools, type AgentTool, type ToolContext } from './tools.js'
 import type { ChatEvent, ChatUsageSummary } from './types.js'
 
 /** Tối đa 2 vòng gọi tool cho mỗi lượt trò chuyện. */
@@ -154,21 +154,32 @@ function sumUsage(messages: BaseMessage[]): { inputTokens: number; outputTokens:
   return { inputTokens, outputTokens }
 }
 
+type GeminiModelInput = ConstructorParameters<typeof ChatGoogleGenerativeAI>[0]
+
 /** Tạo model trợ lý từ env — không hardcode model id hay API key. */
-export function createAssistantModel(env: Env): ChatAnthropic {
-  return new ChatAnthropic({
-    model: env.ASSISTANT_MODEL,
-    apiKey: env.ANTHROPIC_API_KEY,
-    maxTokens: MAX_OUTPUT_TOKENS,
+export function createAssistantModel(env: Env): ChatGoogleGenerativeAI {
+  const thinkingConfig = buildThinkingConfig(env.GEMINI_MODEL, env)
+
+  const options: GeminiModelInput = {
+    model: env.GEMINI_MODEL,
+    apiKey: env.GEMINI_API_KEY,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
-    // Claude Haiku 5.5 hỗ trợ "effort" thay vì "thinking" (budget_tokens không
-    // dùng được vì max_tokens chỉ 500).
-    invocationKwargs: { output_config: { effort: env.ASSISTANT_EFFORT } },
-  })
+  }
+
+  // `modelKwargs` là kênh passthrough của SDK cho các tham số `generationConfig`
+  // chưa có field riêng (như `thinkingConfig`). Gán qua cast để không phụ thuộc
+  // phiên bản SDK có khai báo field này hay không.
+  if (thinkingConfig !== undefined) {
+    const passthrough = options as unknown as Record<string, unknown>
+    passthrough['modelKwargs'] = thinkingConfig
+  }
+
+  return new ChatGoogleGenerativeAI(options)
 }
 
 export function isAssistantConfigured(env: Env): boolean {
-  return env.ANTHROPIC_API_KEY.trim() !== ''
+  return env.GEMINI_API_KEY.trim() !== ''
 }
 
 export type AssistantOptions = {
@@ -177,7 +188,7 @@ export type AssistantOptions = {
   drafts: BookingDraftStore
   sessions: SessionStore
   logger: Logger
-  model: ChatAnthropic
+  model: ChatGoogleGenerativeAI
   /** Số lượt gần nhất giữ nguyên văn trong lịch sử. */
   keepTurns?: number
   maxToolRounds?: number
@@ -350,12 +361,14 @@ export class BookingAssistant {
 }
 
 function buildGraph(options: {
-  model: ChatAnthropic
+  model: ChatGoogleGenerativeAI
   tools: ReturnType<typeof createAgentTools>
   maxToolRounds: number
 }) {
-  const modelWithTools = options.model.bindTools(options.tools)
-  const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool]))
+  const modelWithTools = options.model.bindTools(options.tools.map((tool) => tool.bindable))
+  const toolsByName = new Map<string, AgentTool>(
+    options.tools.map((tool) => [tool.name, tool] as const),
+  )
 
   return new StateGraph(AssistantState)
     .addNode('agent', async (state) => {
@@ -383,7 +396,7 @@ function buildGraph(options: {
           continue
         }
 
-        const output = (await tool.invoke(call.args)) as string
+        const output = await tool.run(call.args)
         messages.push(new ToolMessage({ content: output, tool_call_id: call.id }))
         toolsUsed.push(call.name)
       }

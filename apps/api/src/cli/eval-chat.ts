@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   const assistant = runtime.assistant
 
   if (assistant === null) {
-    console.error('Chưa cấu hình ANTHROPIC_API_KEY — không chạy được eval.')
+    console.error('Chưa cấu hình GEMINI_API_KEY — không chạy được eval.')
     process.exitCode = 1
     return
   }
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
 
   const summary = {
     createdAt: new Date().toISOString(),
-    model: runtime.env.ASSISTANT_MODEL,
+    model: runtime.env.GEMINI_MODEL,
     total: reports.length,
     passed,
     avgDurationMs,

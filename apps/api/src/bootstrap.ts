@@ -1,6 +1,6 @@
 import { config as loadDotenv } from 'dotenv'
 import { resolve } from 'node:path'
-import { OpenAIEmbedder, type Env, type Logger } from '@bookingcare/shared'
+import { GeminiEmbedder, type Env, type Logger } from '@bookingcare/shared'
 import { findRepoRoot } from '@bookingcare/shared/node'
 import { BookingAssistant, createAssistantModel, isAssistantConfigured } from './agent/graph.js'
 import { SessionStore } from './agent/session.js'
@@ -18,7 +18,7 @@ export type Runtime = {
   catalog: EntityCatalog
   drafts: BookingDraftStore
   sessions: SessionStore
-  /** `null` khi chưa cấu hình `ANTHROPIC_API_KEY`. */
+  /** `null` khi chưa cấu hình `GEMINI_API_KEY`. */
   assistant: BookingAssistant | null
 }
 
@@ -35,9 +35,12 @@ export async function createRuntime(): Promise<Runtime> {
 
   // Embedding chỉ cần khi có key; thiếu key thì tìm kiếm lai chạy BM25 thuần.
   const embedder =
-    env.OPENAI_API_KEY.trim() === ''
+    env.GEMINI_API_KEY.trim() === ''
       ? null
-      : new OpenAIEmbedder({ apiKey: env.OPENAI_API_KEY, model: env.EMBEDDING_MODEL })
+      : new GeminiEmbedder({
+          apiKey: env.GEMINI_API_KEY,
+          model: env.GEMINI_EMBEDDING_MODEL,
+        })
 
   const store =
     (await RetrievalStore.load(

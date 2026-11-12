@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { estimateTokens } from './search/normalize.js'
-import { chunkEntity, chunkEntities, dedupeChunks, specialtyLabel } from './chunk.js'
+import {
+  chunkEntity,
+  chunkEntities,
+  dedupeChunks,
+  enrichSpecialtyLabels,
+  specialtyLabel,
+} from './chunk.js'
 import type { CrawledEntity } from './entities.js'
 
 const facility: CrawledEntity = {
@@ -20,12 +26,38 @@ const facility: CrawledEntity = {
 }
 
 describe('specialtyLabel', () => {
-  it('bỏ tiền tố loại và thay gạch nối', () => {
-    expect(specialtyLabel(['specialty-tim-mach'])).toBe('tim mạch')
+  it('bỏ tiền tố loại và thay gạch nối (id là slug không dấu)', () => {
+    expect(specialtyLabel(['specialty-tim-mach'])).toBe('tim mach')
   })
 
   it('ghép nhiều chuyên khoa', () => {
-    expect(specialtyLabel(['specialty-tim-mach', 'specialty-noi-khoa'])).toBe('tim mạch, noi khoa')
+    expect(specialtyLabel(['specialty-tim-mach', 'specialty-noi-khoa'])).toBe('tim mach, noi khoa')
+  })
+})
+
+describe('enrichSpecialtyLabels', () => {
+  it('thay nhãn slug bằng tên thật khi biết id', () => {
+    const chunk = chunkEntity(facility)[0]
+    if (!chunk) throw new Error('chunk không tồn tại')
+
+    const [enriched] = enrichSpecialtyLabels(
+      [chunk],
+      new Map([
+        ['specialty-tim-mach', 'Tim mạch'],
+        ['specialty-noi-khoa', 'Nội khoa'],
+      ]),
+    )
+
+    expect(enriched?.metadata.specialty).toBe('Tim mạch, Nội khoa')
+  })
+
+  it('giữ nhãn slug khi không biết id', () => {
+    const chunk = chunkEntity(facility)[0]
+    if (!chunk) throw new Error('chunk không tồn tại')
+
+    const [enriched] = enrichSpecialtyLabels([chunk], new Map())
+
+    expect(enriched?.metadata.specialty).toBe('tim mach, noi khoa')
   })
 })
 
@@ -42,7 +74,7 @@ describe('chunkEntity', () => {
     expect(chunk?.metadata.type).toBe('facility')
     expect(chunk?.metadata.id).toBe('facility-bv-1')
     expect(chunk?.metadata.name).toBe('Bệnh viện Mẫu Đa khoa Hà Nội')
-    expect(chunk?.metadata.specialty).toBe('tim mạch, noi khoa')
+    expect(chunk?.metadata.specialty).toBe('tim mach, noi khoa')
     expect(chunk?.metadata.area).toBe('Ba Đình, Hà Nội')
     expect(chunk?.metadata.url).toBe('https://bookingcare.vn/benh-vien/bv-1')
   })

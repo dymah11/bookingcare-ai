@@ -1,45 +1,44 @@
 import { z } from 'zod'
+import { GEMINI_API_BASE } from './gemini.js'
 
 /**
- * Model embedding mặc định — đọc từ env `EMBEDDING_MODEL`.
+ * Model embedding mặc định — đọc từ env `GEMINI_EMBEDDING_MODEL`.
  */
-export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small'
+export const DEFAULT_EMBEDDING_MODEL = 'gemini-embedding-001'
 
 export type QueryEmbedder = {
   embed(text: string): Promise<number[]>
   embedMany(texts: string[]): Promise<number[][]>
 }
 
-const embeddingsResponseSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        embedding: z.array(z.number()),
-      }),
-    )
-    .min(1),
+const batchEmbedResponseSchema = z.object({
+  embeddings: z.array(
+    z.object({
+      values: z.array(z.number()),
+    }),
+  ),
 })
 
-export type OpenAIEmbedderOptions = {
+export type GeminiEmbedderOptions = {
   apiKey: string
   model?: string
-  /** Số văn bản gửi mỗi request (OpenAPI giới hạn theo batch). */
+  /** Số văn bản gửi mỗi request batch. */
   batchSize?: number
 }
 
 /**
- * Embedding qua OpenAI REST API (không dùng SDK để kiểm soát payload).
+ * Embedding qua Gemini REST API (không dùng SDK để kiểm soát payload).
  * Chỉ dùng `fetch` nên chạy được cả ở Node lẫn trình duyệt.
  */
-export class OpenAIEmbedder implements QueryEmbedder {
+export class GeminiEmbedder implements QueryEmbedder {
   private readonly apiKey: string
   private readonly model: string
   private readonly batchSize: number
 
-  constructor(options: OpenAIEmbedderOptions) {
+  constructor(options: GeminiEmbedderOptions) {
     this.apiKey = options.apiKey
     this.model = options.model ?? DEFAULT_EMBEDDING_MODEL
-    this.batchSize = options.batchSize ?? 64
+    this.batchSize = options.batchSize ?? 100
   }
 
   async embed(text: string): Promise<number[]> {
@@ -63,26 +62,33 @@ export class OpenAIEmbedder implements QueryEmbedder {
   }
 
   private async embedBatch(texts: string[]): Promise<number[][]> {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    const response = await fetch(`${GEMINI_API_BASE}/models/${this.model}:batchEmbedContents`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${this.apiKey}`,
+        'x-goog-api-key': this.apiKey,
       },
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: JSON.stringify({
+        requests: texts.map((text) => ({
+          model: `models/${this.model}`,
+          content: { parts: [{ text }] },
+        })),
+      }),
     })
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
-      throw new Error(`OpenAI embeddings lỗi (HTTP ${response.status}): ${detail.slice(0, 500)}`)
+      throw new Error(
+        `Gemini embeddings lỗi (HTTP ${response.status}): ${detail.slice(0, 500)}`,
+      )
     }
 
     const payload = (await response.json()) as unknown
-    const parsed = embeddingsResponseSchema.safeParse(payload)
+    const parsed = batchEmbedResponseSchema.safeParse(payload)
     if (!parsed.success) {
-      throw new Error('OpenAI embeddings trả về payload không đúng schema')
+      throw new Error('Gemini embeddings trả về payload không đúng schema')
     }
 
-    return parsed.data.data.map((item) => item.embedding)
+    return parsed.data.embeddings.map((item) => item.values)
   }
 }

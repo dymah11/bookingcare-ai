@@ -42,6 +42,38 @@ export function nameToSlug(name: string): string {
  * Parse giá tiền kiểu Việt Nam: "150.000", "1.500.000 ₫", "150.000 - 300.000",
  * "1,5 triệu". Trả `undefined` nếu không tìm thấy số.
  */
+/**
+ * Đọc số kiểu Việt Nam.
+ *
+ * - `150.000` → 150000 (dấu chấm là phân cách nghìn)
+ * - `1,5` → 1.5 (dấu phẩy là dấu thập phân)
+ * - `150,000` → 150000 (dấu phẩy theo sau nhóm 3 chữ số là phân cách nghìn)
+ */
+function parseVietnameseNumber(digits: string): number {
+  const lastComma = digits.lastIndexOf(',')
+  const lastDot = digits.lastIndexOf('.')
+
+  if (lastComma !== -1 && lastDot !== -1) {
+    // Cả '.' và ',' → '.' phân cách nghìn, ',' là dấu thập phân.
+    return Number.parseFloat(digits.replace(/\./g, '').replace(',', '.'))
+  }
+
+  if (lastComma !== -1) {
+    const decimals = digits.length - lastComma - 1
+    return decimals === 3
+      ? Number.parseFloat(digits.replace(/,/g, ''))
+      : Number.parseFloat(digits.replace(',', '.'))
+  }
+
+  if (lastDot !== -1) {
+    const decimals = digits.length - lastDot - 1
+    const isThousands = decimals === 3 && /^\d{1,3}(\.\d{3})+$/.test(digits)
+    return Number.parseFloat(isThousands ? digits.replace(/\./g, '') : digits)
+  }
+
+  return Number.parseFloat(digits)
+}
+
 export function parsePrice(input: string): number | undefined {
   const text = input.toLowerCase().replace(/[–—]/g, '-')
   const firstPart = text.split('-')[0] ?? ''
@@ -51,16 +83,7 @@ export function parsePrice(input: string): number | undefined {
   const digits = match[1] ?? ''
   const unit = match[2]
 
-  let cleaned = digits
-  if (cleaned.includes(',') && cleaned.includes('.')) {
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.')
-  } else if (cleaned.includes(',')) {
-    cleaned = cleaned.replace(/,/g, '')
-  } else {
-    cleaned = cleaned.replace(/\./g, '')
-  }
-
-  let value = Number.parseFloat(cleaned)
+  let value = parseVietnameseNumber(digits)
   if (!Number.isFinite(value)) return undefined
 
   if (unit === 'triệu' || unit === 'tr') {
