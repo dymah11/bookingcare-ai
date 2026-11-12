@@ -201,6 +201,35 @@ Kết quả tìm kiếm đã rút gọn: `{ id, type, name, specialty, area, url
 Mọi request/response đều được validate bằng zod; lỗi trả về dạng
 `{ "error": { "code", "message", "details?" } }`.
 
+## Đánh giá chất lượng trợ lý
+
+```bash
+pnpm dev:api   # terminal 1 — API phải chạy, eval gọi http://localhost:3001/api/chat
+pnpm eval      # terminal 2 — chạy 123 case + LLM judge
+```
+
+Chạy theo nhóm để tiết kiệm quota (nhóm `search-*` **không** tốn request Gemini):
+
+```bash
+pnpm eval -- --tag search-facility --tag search-doctor
+```
+
+Kết quả ghi ra `eval/results/eval-<timestamp>.md` (báo cáo đọc được) và
+`.json` (dữ liệu thô). Báo cáo gồm:
+
+- Tỉ lệ đạt tổng và **theo từng nhóm** (tìm kiếm / hỏi đáp / an toàn / ngoài phạm vi / thiếu thông tin / đặt lịch).
+- **Thời gian phản hồi**: trung bình, p95, max — kèm cột đạt/không đạt so với ràng buộc ≤ 10s.
+- **Token mỗi lượt**: input (TB/max) và output (TB/max) — so với ≤ 30k in / ≤ 500 out.
+- Điểm LLM-as-judge trung bình, số case trôi từ khoá cấm, và danh sách case chưa đạt kèm lý do.
+
+**Về quota:** judge **gộp 10 case / 1 request** (`judgeBatch`) — chấm lẻ 123 case sẽ
+không bao giờ xong với gói free (20 request/ngày cho model text). Phần lớn case là
+câu tìm kiếm → fast path → **0 request Gemini**; chỉ nhóm hội thoại/đặt lịch mới tốn
+quota. Nếu hết quota, chạy eval theo lô nhỏ hơn.
+
+Bộ case nằm ở [`eval/cases/eval-cases.jsonl`](eval/cases/eval-cases.jsonl) (123 case,
+10 nhóm); thêm case chỉ cần thêm 1 dòng JSONL.
+
 ## Kiểm thử và chất lượng
 
 ```bash

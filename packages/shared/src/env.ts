@@ -39,6 +39,11 @@ export const envSchema = z.object({
    */
   EMBEDDING_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(6000).default(100),
   /**
+   * Có gọi API embedding cho câu truy vấn hay không.
+   * Tắt → mỗi lượt tìm kiếm chỉ dùng BM25, **không tốn request embedding nào**.
+   */
+  QUERY_EMBEDDINGS: z.enum(['true', 'false']).default('true'),
+  /**
    * Mức reasoning cho dòng Gemini 3+ (`thinkingConfig.thinkingLevel`).
    * API nhận giá trị viết HOA — hàm `buildThinkingConfig()` tự chuyển.
    * Bỏ qua nếu model của bạn thuộc dòng 2.5 (dùng `GEMINI_THINKING_BUDGET`).

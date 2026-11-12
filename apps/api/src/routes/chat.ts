@@ -60,7 +60,12 @@ export function createChatRouter(deps: AppDependencies): ReturnType<typeof Route
         requestId,
       })
 
-      res.json({ sessionId, answer: result.answer, usage: result.usage })
+      res.json({
+        sessionId,
+        answer: result.answer,
+        usage: result.usage,
+        cards: result.cards,
+      })
       return
     }
 

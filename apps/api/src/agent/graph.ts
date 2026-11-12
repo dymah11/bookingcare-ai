@@ -1,4 +1,5 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
+import type { StructuredToolInterface } from '@langchain/core/tools'
 import {
   AIMessage,
   HumanMessage,
@@ -11,6 +12,7 @@ import {
   estimateTokens,
   type Env,
   type Logger,
+  type ResultCard,
 } from '@bookingcare/shared'
 import type { BookingDraftStore } from '../booking/drafts.js'
 import type { EntityCatalog } from '../retrieval/catalog.js'
@@ -217,9 +219,12 @@ async function invokeWithFallback(
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        return exhausted
-          ? await model.invoke(messages)
-          : await model.bindTools(options.tools.map((tool) => tool.bindable)).invoke(messages)
+        return await invokeModel(
+          model,
+          messages,
+          !exhausted,
+          options.tools.map((tool) => tool.bindable),
+        )
       } catch (error) {
         lastError = error
         const message = error instanceof Error ? error.message : String(error)
@@ -294,9 +299,47 @@ export type AssistantOptions = {
 
 /** Lỗi có thể thử model khác: quá tải, hết quota, model không còn dùng được. */
 function isRetryableModelError(message: string): boolean {
-  return /503|429|404|overloaded|unavailable|high demand|RESOURCE_EXHAUSTED|not found/i.test(
+  return /503|429|404|overloaded|unavailable|high demand|RESOURCE_EXHAUSTED|not found|timeout/i.test(
     message,
   )
+}
+
+/**
+ * Timeout cho một lần gọi model.
+ *
+ * SDK @langchain/google-genai 1.0.3 không hỗ trợ `timeout` — một lần gọi tới
+ * model đang quá tải có thể treo tới 2 phút. Ta tự đặt timeout và abort
+ * request để chuyển sang model dự phòng kịp.
+ */
+const MODEL_TIMEOUT_MS = 12_000
+
+async function invokeModel(
+  model: ChatGoogleGenerativeAI,
+  messages: BaseMessage[],
+  withTools: boolean,
+  tools: StructuredToolInterface[],
+): Promise<BaseMessage> {
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`Timeout ${MODEL_TIMEOUT_MS}ms khi gọi model ${model.model}`))
+    }, MODEL_TIMEOUT_MS)
+  })
+
+  try {
+    const active = withTools ? model.bindTools(tools) : model
+    return await Promise.race([
+      active.invoke(messages, { signal: controller.signal }),
+      timeout,
+    ])
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+  }
 }
 
 /**
@@ -608,8 +651,9 @@ export class BookingAssistant {
     sessionId: string
     message: string
     requestId: string
-  }): Promise<{ answer: string; usage: ChatUsageSummary }> {
+  }): Promise<{ answer: string; usage: ChatUsageSummary; cards: ResultCard[] }> {
     let answer = ''
+    const cards: ResultCard[] = []
     let usage: ChatUsageSummary = {
       inputTokens: 0,
       outputTokens: 0,
@@ -621,12 +665,14 @@ export class BookingAssistant {
     for await (const event of this.stream(input)) {
       if (event.type === 'delta') {
         answer += event.text
+      } else if (event.type === 'cards') {
+        cards.push(...event.cards)
       } else if (event.type === 'done') {
         usage = event.usage
       }
     }
 
-    return { answer, usage }
+    return { answer, usage, cards }
   }
 }
 

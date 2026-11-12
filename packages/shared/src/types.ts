@@ -29,6 +29,8 @@ export type ChatResponse = {
   sessionId: string
   answer: string
   usage: ChatUsage
+  /** Thẻ kết quả đi kèm câu trả lời (cùng nội dung với sự kiện SSE `cards`). */
+  cards?: ResultCard[]
 }
 
 export type BookingDraftInput = {

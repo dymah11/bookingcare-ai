@@ -1,6 +1,12 @@
+import { createHash } from 'node:crypto'
 import { config as loadDotenv } from 'dotenv'
 import { resolve } from 'node:path'
-import { GeminiEmbedder, listModels, type Env, type Logger } from '@bookingcare/shared'
+import {
+  GeminiEmbedder,
+  resolveFallbackModels,
+  type Env,
+  type Logger,
+} from '@bookingcare/shared'
 import { findRepoRoot } from '@bookingcare/shared/node'
 import { BookingAssistant, createAssistantModel, isAssistantConfigured } from './agent/graph.js'
 import { SessionStore } from './agent/session.js'
@@ -26,6 +32,19 @@ export type Runtime = {
  * Dựng mọi thành phần của API — dùng chung cho server và cho CLI `pnpm chat`
  * để hai đường chạy y hệt nhau.
  */
+/**
+ * Dấu vân tay của API key (8 ký tự đầu của SHA-256).
+ *
+ * Giúp xác nhận API đang dùng **đúng key** mà bạn vừa đổi, mà không phải lộ
+ * key thật ra log.
+ */
+function keyFingerprint(apiKey: string): string {
+  if (apiKey.trim() === '') {
+    return '(chưa có key)'
+  }
+  return createHash('sha256').update(apiKey).digest('hex').slice(0, 8)
+}
+
 export async function createRuntime(): Promise<Runtime> {
   const root = findRepoRoot(process.cwd())
   loadDotenv({ path: resolve(root, '.env') })
@@ -34,8 +53,9 @@ export async function createRuntime(): Promise<Runtime> {
   const logger = createApiLogger(env)
 
   // Embedding chỉ cần khi có key; thiếu key thì tìm kiếm lai chạy BM25 thuần.
+  // QUERY_EMBEDDINGS=false → không gọi API embedding cho câu truy vấn (tiết kiệm quota).
   const embedder =
-    env.GEMINI_API_KEY.trim() === ''
+    env.GEMINI_API_KEY.trim() === '' || env.QUERY_EMBEDDINGS === 'false'
       ? null
       : new GeminiEmbedder({
           apiKey: env.GEMINI_API_KEY,
@@ -70,7 +90,19 @@ export async function createRuntime(): Promise<Runtime> {
 
   const sessions = new SessionStore()
 
-  const fallbackIds = await resolveFallbackModelIds(env, logger)
+  const fallbackIds = await resolveFallbackModels(env)
+  if (fallbackIds.length > 0) {
+    logger.info('model_fallbacks_resolved', { models: fallbackIds })
+  }
+
+  logger.info('runtime_config', {
+    keyFingerprint: keyFingerprint(env.GEMINI_API_KEY),
+    assistantModel: env.GEMINI_MODEL,
+    judgeModel: env.GEMINI_JUDGE_MODEL,
+    embeddingModel: env.GEMINI_EMBEDDING_MODEL,
+    fallbackModels: fallbackIds,
+    directSearch: env.ASSISTANT_DIRECT_SEARCH === 'true',
+  })
 
   const assistant = isAssistantConfigured(env)
     ? new BookingAssistant({
@@ -90,38 +122,9 @@ export async function createRuntime(): Promise<Runtime> {
 }
 
 /**
- * Danh sách model dự phòng.
+ * Danh sách model dự phòng được dùng chung với script eval.
  *
  * Nếu `GEMINI_MODEL_FALLBACKS` trống thì tự dò các model hỗ trợ chat bằng
  * `GET /v1beta/models` — lệnh này **không tốn quota**, và giúp agent không bị
  * chết khi model chính gặp 503 quá tải.
  */
-async function resolveFallbackModelIds(env: Env, logger: Logger): Promise<string[]> {
-  const configured = env.GEMINI_MODEL_FALLBACKS.split(',')
-    .map((id) => id.trim())
-    .filter((id) => id !== '')
-
-  if (configured.length > 0) {
-    return configured
-  }
-
-  if (env.GEMINI_API_KEY.trim() === '') {
-    return []
-  }
-
-  try {
-    const models = await listModels(env.GEMINI_API_KEY)
-    const discovered = models
-      .filter((model) => model.supportsChat && model.id !== env.GEMINI_MODEL)
-      .map((model) => model.id)
-      .slice(0, 3)
-
-    logger.info('model_fallbacks_discovered', { models: discovered })
-    return discovered
-  } catch (error) {
-    logger.warn('model_fallbacks_discovery_failed', {
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return []
-  }
-}
