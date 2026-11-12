@@ -68,11 +68,11 @@ export {
 } from './chunk.js'
 export type { Chunk, ChunkMetadata } from './chunk.js'
 
-export { DEFAULT_EMBEDDING_MODEL, GeminiEmbedder } from './embeddings.js'
+export { DEFAULT_EMBEDDING_MODEL, GeminiApiError, GeminiEmbedder } from './embeddings.js'
 export type { GeminiEmbedderOptions, QueryEmbedder } from './embeddings.js'
 
-export { buildThinkingConfig, generateContent, GEMINI_API_BASE } from './gemini.js'
-export type { GenerateContentOptions } from './gemini.js'
+export { buildThinkingConfig, generateContent, GEMINI_API_BASE, listModels } from './gemini.js'
+export type { AvailableModel, GenerateContentOptions } from './gemini.js'
 
 export {
   BM25_B,
@@ -124,6 +124,8 @@ export type {
   ChatRequest,
   ChatResponse,
   ChatRole,
+  ChatStatusEvent,
   ChatUsage,
   ResultCard,
+  ToolCallEvent,
 } from './types.js'

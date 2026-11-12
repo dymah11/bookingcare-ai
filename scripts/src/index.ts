@@ -106,25 +106,38 @@ async function main(): Promise<void> {
   const bm25Unaccented = serializeTermIndex(buildTermIndex(documents.unaccented))
   const bm25Accented = serializeTermIndex(buildTermIndex(documents.accented))
 
-  // Embedding là tùy chọn: thiếu GEMINI_API_KEY thì index vẫn dùng được với BM25.
+  // Embedding là tùy chọn: thiếu key, tắt qua env, hoặc lỗi quota → index
+  // vẫn được ghi với BM25 thuần (tìm kiếm vẫn chạy được).
   let embeddings: number[][] = []
   let embeddingModel = ''
 
-  if (config.env.GEMINI_API_KEY.trim() !== '' && chunks.length > 0) {
-    const embedder = new GeminiEmbedder({
-      apiKey: config.env.GEMINI_API_KEY,
-      model: config.env.GEMINI_EMBEDDING_MODEL,
-    })
-    embeddings = await embedder.embedMany(chunks.map((chunk) => chunk.text))
-    embeddingModel = config.env.GEMINI_EMBEDDING_MODEL
-    logger.info('embeddings_built', { model: embeddingModel, count: embeddings.length })
+  const embeddingEnabled = config.env.INDEX_EMBEDDINGS === 'true'
+  const hasKey = config.env.GEMINI_API_KEY.trim() !== ''
+
+  if (!embeddingEnabled) {
+    logger.warn('embeddings_skipped', { reason: 'INDEX_EMBEDDINGS=false' })
+  } else if (!hasKey) {
+    logger.warn('embeddings_skipped', { reason: 'Thiếu GEMINI_API_KEY — chỉ dùng BM25' })
+  } else if (chunks.length === 0) {
+    logger.warn('embeddings_skipped', { reason: 'Không có chunk để embedding' })
   } else {
-    logger.warn('embeddings_skipped', {
-      reason:
-        config.env.GEMINI_API_KEY.trim() === ''
-          ? 'Thiếu GEMINI_API_KEY — chỉ dùng BM25'
-          : 'Không có chunk để embedding',
-    })
+    try {
+      const embedder = new GeminiEmbedder({
+        apiKey: config.env.GEMINI_API_KEY,
+        model: config.env.GEMINI_EMBEDDING_MODEL,
+        requestsPerMinute: config.env.EMBEDDING_RATE_PER_MINUTE,
+      })
+      embeddings = await embedder.embedMany(chunks.map((chunk) => chunk.text))
+      embeddingModel = config.env.GEMINI_EMBEDDING_MODEL
+      logger.info('embeddings_built', { model: embeddingModel, count: embeddings.length })
+    } catch (error) {
+      embeddings = []
+      embeddingModel = ''
+      logger.warn('embeddings_failed', {
+        error: error instanceof Error ? error.message : String(error),
+        fallback: 'Tiếp tục với BM25-only — tìm kiếm vẫn chạy được',
+      })
+    }
   }
 
   const index: RetrievalIndexFile = {

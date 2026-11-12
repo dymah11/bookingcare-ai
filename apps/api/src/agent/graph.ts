@@ -6,14 +6,25 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages'
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph'
-import { buildThinkingConfig, type Env, type Logger } from '@bookingcare/shared'
+import {
+  buildThinkingConfig,
+  estimateTokens,
+  type Env,
+  type Logger,
+} from '@bookingcare/shared'
 import type { BookingDraftStore } from '../booking/drafts.js'
 import type { EntityCatalog } from '../retrieval/catalog.js'
 import type { RetrievalStore } from '../retrieval/store.js'
 import { appendTurn, buildModelMessages, DEFAULT_KEEP_TURNS } from './history.js'
-import { loadSystemPrompt } from './prompts.js'
-import type { SessionStore } from './session.js'
-import { createAgentTools, type AgentTool, type ToolContext } from './tools.js'
+import { buildDirectAnswer, detectIntent, findLongestMatch } from './intent.js'
+import { buildPreRetrievalBlock, composeSystemPrompt, loadSystemPrompt } from './prompts.js'
+import type { ChatSession, SessionStore } from './session.js'
+import {
+  createAgentTools,
+  searchResultToCard,
+  type AgentTool,
+  type ToolContext,
+} from './tools.js'
 import type { ChatEvent, ChatUsageSummary } from './types.js'
 
 /** Tối đa 2 vòng gọi tool cho mỗi lượt trò chuyện. */
@@ -157,29 +168,106 @@ function sumUsage(messages: BaseMessage[]): { inputTokens: number; outputTokens:
 type GeminiModelInput = ConstructorParameters<typeof ChatGoogleGenerativeAI>[0]
 
 /** Tạo model trợ lý từ env — không hardcode model id hay API key. */
-export function createAssistantModel(env: Env): ChatGoogleGenerativeAI {
-  const thinkingConfig = buildThinkingConfig(env.GEMINI_MODEL, env)
+export function createAssistantModel(env: Env, modelId?: string): ChatGoogleGenerativeAI {
+  const model = modelId ?? env.GEMINI_MODEL
+  const thinkingConfig = buildThinkingConfig(model, env, MAX_OUTPUT_TOKENS)
 
-  const options: GeminiModelInput = {
-    model: env.GEMINI_MODEL,
+  const options = {
+    model,
     apiKey: env.GEMINI_API_KEY,
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     temperature: 0,
+    // Không retry nội bộ của SDK: lỗi 503/429 sẽ được xử lý bằng chuỗi model
+    // dự phòng (chuyển model ngay thay vì chờ backoff dài).
+    maxRetries: 0,
+    ...(thinkingConfig === undefined ? {} : { thinkingConfig }),
   }
 
-  // `modelKwargs` là kênh passthrough của SDK cho các tham số `generationConfig`
-  // chưa có field riêng (như `thinkingConfig`). Gán qua cast để không phụ thuộc
-  // phiên bản SDK có khai báo field này hay không.
-  if (thinkingConfig !== undefined) {
-    const passthrough = options as unknown as Record<string, unknown>
-    passthrough['modelKwargs'] = thinkingConfig
-  }
-
-  return new ChatGoogleGenerativeAI(options)
+  // Kiểu `thinkingLevel` trong @langchain/google-genai 1.0.3 mới khai báo
+  // `LOW | HIGH` (chưa có `MEDIUM`) nên cần cast để gửi được mức medium.
+  return new ChatGoogleGenerativeAI(options as unknown as GeminiModelInput)
 }
 
 export function isAssistantConfigured(env: Env): boolean {
   return env.GEMINI_API_KEY.trim() !== ''
+}
+
+/**
+ * Gọi model, thử lần lượt qua chuỗi model dự phòng khi gặp lỗi tạm thời
+ * (503 quá tải, 429 hết quota, 404 model không còn dùng được cho key này).
+ *
+ * 503 thường là quá tải ngắn hạn nên thử lại **cùng model** một lần sau khi
+ * chờ vài giây; 429/404 thì chuyển model ngay (chờ cũng không giúp ích).
+ */
+async function invokeWithFallback(
+  options: {
+    model: ChatGoogleGenerativeAI
+    fallbackModels?: ChatGoogleGenerativeAI[]
+    tools: ReturnType<typeof createAgentTools>
+    ctx: ToolContext
+  },
+  messages: BaseMessage[],
+  exhausted: boolean,
+): Promise<BaseMessage> {
+  const models = [options.model, ...(options.fallbackModels ?? [])]
+  let lastError: unknown = new Error('Không có model nào khả dụng')
+
+  for (const [index, model] of models.entries()) {
+    const isPrimary = index === 0
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return exhausted
+          ? await model.invoke(messages)
+          : await model.bindTools(options.tools.map((tool) => tool.bindable)).invoke(messages)
+      } catch (error) {
+        lastError = error
+        const message = error instanceof Error ? error.message : String(error)
+
+        // Lỗi cứng của model chính (sai API key, sai payload…) → ném ra luôn.
+        if (isPrimary && attempt === 1 && !isRetryableModelError(message)) {
+          throw error
+        }
+
+        const canRetrySame =
+          attempt === 1 && isTransientOverloadError(message) && models.length === 1
+
+        options.ctx.logger.warn('model_call_retry', {
+          model: model.model,
+          attempt,
+          transient: canRetrySame,
+          error: message.slice(0, 200),
+        })
+
+        if (canRetrySame) {
+          await sleep(2000)
+          continue
+        }
+        break
+      }
+    }
+
+    if (isPrimary && !isRetryableModelError(errorMessage(lastError))) {
+      throw lastError
+    }
+  }
+
+  throw lastError
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** 503 / quá tải — thường hết sau vài giây nên đáng thử lại cùng model. */
+function isTransientOverloadError(message: string): boolean {
+  return /503|overloaded|high demand|unavailable|try again later/i.test(message)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms)
+  })
 }
 
 export type AssistantOptions = {
@@ -189,9 +277,26 @@ export type AssistantOptions = {
   sessions: SessionStore
   logger: Logger
   model: ChatGoogleGenerativeAI
+  /**
+   * Các model dự phòng — thử lần lượt khi model chính lỗi (503 quá tải,
+   * 429 hết quota, 404 model không còn dùng được cho key này).
+   */
+  fallbackModels?: ChatGoogleGenerativeAI[]
   /** Số lượt gần nhất giữ nguyên văn trong lịch sử. */
   keepTurns?: number
   maxToolRounds?: number
+  /**
+   * Câu hỏi tra cứu được trả thẳng từ index, không gọi model (mặc định bật).
+   * Tắt để mọi lượt đều gọi model — tốn quota hơn nhưng câu trả lời tự nhiên hơn.
+   */
+  directSearch?: boolean
+}
+
+/** Lỗi có thể thử model khác: quá tải, hết quota, model không còn dùng được. */
+function isRetryableModelError(message: string): boolean {
+  return /503|429|404|overloaded|unavailable|high demand|RESOURCE_EXHAUSTED|not found/i.test(
+    message,
+  )
 }
 
 /**
@@ -203,6 +308,30 @@ export class BookingAssistant {
 
   constructor(options: AssistantOptions) {
     this.options = options
+  }
+
+  /**
+   * Lưu lượt hội thoại vào phiên; lượt cũ hơn `keepTurns` được rút gọn vào
+   * bản tóm tắt để prompt không bị phình.
+   */
+  private saveTurn(
+    sessions: SessionStore,
+    sessionId: string,
+    session: ChatSession,
+    userMessage: string,
+    answer: string,
+    ctx: ToolContext,
+    keepTurns: number,
+  ): void {
+    let history = { turns: session.turns, summary: session.summary }
+    history = appendTurn(history, { role: 'user', content: userMessage, entities: [] }, keepTurns)
+    history = appendTurn(
+      history,
+      { role: 'assistant', content: answer, entities: ctx.cards.map((card) => card.title) },
+      keepTurns,
+    )
+
+    sessions.set(sessionId, { ...session, turns: history.turns, summary: history.summary })
   }
 
   async *stream(input: {
@@ -223,19 +352,128 @@ export class BookingAssistant {
       session,
       cards: [],
       bookings: [],
+      toolCalls: [],
     }
 
     const tools = createAgentTools(ctx)
-    const graph = buildGraph({ model, tools, maxToolRounds })
+    const graph = buildGraph({ model, tools, ctx, maxToolRounds })
 
-    const systemPrompt = loadSystemPrompt()
+    const startedAt = Date.now()
+
+    // Index rỗng → không có gì để trả lời, và gọi model cũng vô nghĩa.
+    // Báo thẳng thay vì để người dùng chờ 60s rồi nhận "không tìm thấy".
+    if (store.size === 0) {
+      logger.error('retrieval_index_empty', { requestId: input.requestId })
+      yield {
+        type: 'error',
+        message:
+          'Index truy xuất đang rỗng nên chưa tra cứu được dữ liệu. Hãy chạy `pnpm index` (hoặc `pnpm seed` nếu chưa có dữ liệu crawl) rồi thử lại.',
+      }
+      return
+    }
+
+    // Chuyên khoa / khu vực mà câu hỏi nhắc tới — dùng để lọc kết quả, tránh
+    // trả về mọi cơ sở cùng thành phố chỉ vì khớp tên địa danh.
+    const specialty = findLongestMatch(input.message, catalog.specialtyNames())
+    const area = findLongestMatch(input.message, catalog.cities())
+
+    // --- Fast path -----------------------------------------------------------------
+    // Câu hỏi tra cứu danh sách → trả thẳng kết quả từ index, KHÔNG gọi model.
+    // Gói Gemini free tier chỉ 5 request/phút + 20 request/ngày; một lượt gọi model
+    // có thể mất hàng chục giây (và phải chờ cửa sổ quota), nên phần lớn câu hỏi
+    // tìm kiếm không cần model.
+    const intent = detectIntent(input.message)
+    const fastType = intent.isSearch ? intent.type : undefined
+    const useFastPath =
+      this.options.directSearch !== false &&
+      fastType !== undefined &&
+      fastType !== 'specialty'
+
+    if (useFastPath && fastType !== undefined) {
+      const toolName = `search_${fastType}`
+      yield { type: 'status', phase: 'tool', label: `Đang tra cứu: ${toolName}…` }
+      ctx.toolCalls.push({ type: 'tool', name: toolName, status: 'start' })
+
+      const hits = await store.search(input.message, {
+        type: fastType,
+        specialty,
+        area,
+        k: 5,
+        embeddings: false,
+      })
+
+      // Bộ lọc chuyên khoa có thể quá chặt (dữ liệu crawl chưa gán specialtyIds…)
+      // → thử lại nhưng VẪN giữ bộ lọc khu vực: khu vực là thông tin tin cậy hơn
+      // (crawl luôn điền từ địa chỉ), bỏ nó thì kết quả trả ra lẫn các tỉnh khác.
+      if (hits.length === 0 && specialty !== undefined) {
+        ctx.logger.info('fast_path_relaxed_specialty_filter', { specialty, area })
+        hits.push(
+          ...(await store.search(input.message, {
+            type: fastType,
+            area,
+            k: 5,
+            embeddings: false,
+          })),
+        )
+      }
+
+      ctx.toolCalls.push({ type: 'tool', name: toolName, status: 'done' })
+
+      if (hits.length > 0) {
+        ctx.cards.push(...hits.map(searchResultToCard))
+
+        const answer = buildDirectAnswer(input.message, fastType, hits)
+        const usage: ChatUsageSummary = {
+          inputTokens: 0,
+          outputTokens: estimateTokens(answer),
+          durationMs: Date.now() - startedAt,
+          toolRounds: 0,
+          toolsUsed: [toolName],
+        }
+
+        logger.info('chat_turn_done', {
+          requestId: input.requestId,
+          sessionId: input.sessionId,
+          mode: 'direct-search',
+          durationMs: usage.durationMs,
+          toolsUsed: usage.toolsUsed,
+        })
+
+        yield { type: 'cards', cards: ctx.cards }
+        yield { type: 'delta', text: answer }
+        this.saveTurn(sessions, input.sessionId, session, input.message, answer, ctx, keepTurns)
+        yield { type: 'done', usage }
+        return
+      }
+
+      // Không có kết quả → rơi xuống đường model để trả lời tự nhiên hơn.
+      ctx.cards.length = 0
+      ctx.toolCalls.length = 0
+    }
+
+    // Bước tiền truy xuất: BM25 thuần (không gọi API embedding) để phần lớn
+    // câu hỏi tìm kiếm chỉ cần **1 request model** thay vì 2 (chọn tool + trả lời).
+    const preHits = await store.search(input.message, {
+      specialty,
+      area,
+      k: 5,
+      embeddings: false,
+    })
+    if (preHits.length > 0) {
+      ctx.cards.push(...preHits.map(searchResultToCard))
+    }
+
+    const systemPrompt = composeSystemPrompt(
+      loadSystemPrompt(),
+      buildPreRetrievalBlock(preHits),
+    )
     const messages = buildModelMessages(systemPrompt, session.summary, session.turns)
     messages.push(new HumanMessage(input.message))
 
-    const startedAt = Date.now()
     let answer = ''
     let emittedCards = 0
     let emittedBookings = 0
+    let emittedToolCalls = 0
     let state: AssistantStateView | null = null
 
     const stream = await graph.stream(
@@ -243,37 +481,84 @@ export class BookingAssistant {
       { streamMode: ['messages', 'values'] },
     )
 
-    for await (const chunk of stream) {
-      for (const message of extractMessages(chunk)) {
-        if (!(message instanceof AIMessage)) continue
-        const text = messageText(message)
-        if (text === '') continue
-        answer += text
-        yield { type: 'delta', text }
-      }
+    // Bước đầu tiên là model suy luận xem cần tool nào — chưa có token nào
+    // được stream ra, nên phải báo trạng thái ngay để UI không tưởng là treo.
+    let phase: 'thinking' | 'tool' | 'answering' = 'thinking'
+    yield { type: 'status', phase, label: 'Đang phân tích câu hỏi…' }
 
-      const nextState = extractState(chunk)
-      if (nextState !== null) {
-        state = nextState
-        const finalAnswer = lastAssistantText(nextState.messages)
-        if (finalAnswer !== null && finalAnswer !== answer) {
-          answer = finalAnswer
+    try {
+      for await (const chunk of stream) {
+        for (const message of extractMessages(chunk)) {
+          if (!(message instanceof AIMessage)) continue
+          const text = messageText(message)
+          if (text === '') continue
+          if (phase !== 'answering') {
+            phase = 'answering'
+            yield { type: 'status', phase, label: 'Đang soạn câu trả lời…' }
+          }
+          answer += text
+          yield { type: 'delta', text }
+        }
+
+        const nextState = extractState(chunk)
+        if (nextState !== null) {
+          state = nextState
+          const finalAnswer = lastAssistantText(nextState.messages)
+          if (finalAnswer !== null && finalAnswer !== answer) {
+            answer = finalAnswer
+          }
+        }
+
+        // Tool đang chạy → UI hiện tiến trình thay vì đứng im.
+        if (ctx.toolCalls.length > emittedToolCalls) {
+          const pending = ctx.toolCalls.slice(emittedToolCalls)
+          emittedToolCalls = ctx.toolCalls.length
+          for (const call of pending) {
+            yield { type: 'tool', name: call.name, status: call.status }
+
+            if (call.status === 'start') {
+              phase = 'tool'
+              yield { type: 'status', phase, label: `Đang tra cứu: ${call.name}…` }
+            } else {
+              phase = 'thinking'
+              yield { type: 'status', phase, label: 'Đang soạn câu trả lời…' }
+            }
+          }
+        }
+
+        if (ctx.cards.length > emittedCards) {
+          const cards = ctx.cards.slice(emittedCards)
+          emittedCards = ctx.cards.length
+          yield { type: 'cards', cards }
+        }
+
+        if (ctx.bookings.length > emittedBookings) {
+          const bookings = ctx.bookings.slice(emittedBookings)
+          emittedBookings = ctx.bookings.length
+          for (const booking of bookings) {
+            yield { type: 'booking', booking }
+          }
         }
       }
-
-      if (ctx.cards.length > emittedCards) {
-        const cards = ctx.cards.slice(emittedCards)
-        emittedCards = ctx.cards.length
-        yield { type: 'cards', cards }
-      }
-
-      if (ctx.bookings.length > emittedBookings) {
-        const bookings = ctx.bookings.slice(emittedBookings)
-        emittedBookings = ctx.bookings.length
-        for (const booking of bookings) {
-          yield { type: 'booking', booking }
+    } catch (error) {
+      // Gói free tier chỉ 5 request/phút + 20 request/ngày cho Gemini 3.8 Flash —
+      // báo rõ để người dùng biết vì sao chờ lâu thay vì thấy lỗi chung chung.
+      const message = error instanceof Error ? error.message : String(error)
+      if (/429|RESOURCE_EXHAUSTED|quota/i.test(message)) {
+        logger.error('model_quota_exceeded', {
+          requestId: input.requestId,
+          error: message.slice(0, 500),
+        })
+        yield {
+          type: 'error',
+          message: `Gemini báo hết hạn mức (429). Chi tiết: ${message.slice(0, 300)}`,
         }
+        return
       }
+
+      logger.error('chat_turn_failed', { requestId: input.requestId, error: message })
+      yield { type: 'error', message }
+      return
     }
 
     // Flush phần chưa phát (trường hợp stream không trả về state).
@@ -294,22 +579,7 @@ export class BookingAssistant {
     }
 
     // Cập nhật lịch sử: lượt cũ bị rút gọn vào bản tóm tắt.
-    let history = { turns: session.turns, summary: session.summary }
-    history = appendTurn(
-      history,
-      { role: 'user', content: input.message, entities: [] },
-      keepTurns,
-    )
-    history = appendTurn(
-      history,
-      { role: 'assistant', content: answer, entities: ctx.cards.map((card) => card.title) },
-      keepTurns,
-    )
-    sessions.set(input.sessionId, {
-      ...session,
-      turns: history.turns,
-      summary: history.summary,
-    })
+    this.saveTurn(sessions, input.sessionId, session, input.message, answer, ctx, keepTurns)
 
     const usage = state === null ? { inputTokens: 0, outputTokens: 0 } : sumUsage(state.messages)
     const summary: ChatUsageSummary = {
@@ -362,10 +632,11 @@ export class BookingAssistant {
 
 function buildGraph(options: {
   model: ChatGoogleGenerativeAI
+  fallbackModels?: ChatGoogleGenerativeAI[]
   tools: ReturnType<typeof createAgentTools>
+  ctx: ToolContext
   maxToolRounds: number
 }) {
-  const modelWithTools = options.model.bindTools(options.tools.map((tool) => tool.bindable))
   const toolsByName = new Map<string, AgentTool>(
     options.tools.map((tool) => [tool.name, tool] as const),
   )
@@ -374,9 +645,16 @@ function buildGraph(options: {
     .addNode('agent', async (state) => {
       // Hết ngân sách tool → buộc model trả lời bằng văn bản.
       const exhausted = state.toolRounds >= options.maxToolRounds
-      const response = exhausted
-        ? await options.model.invoke(state.messages)
-        : await modelWithTools.invoke(state.messages)
+      const startedAt = Date.now()
+      const response = await invokeWithFallback(options, state.messages, exhausted)
+
+      // Log thời gian từng lần gọi model để biết độ trễ nằm ở model hay tool.
+      options.ctx.logger.info('model_call_done', {
+        durationMs: Date.now() - startedAt,
+        toolRounds: state.toolRounds,
+        exhausted,
+      })
+
       return { messages: [response] }
     })
     .addNode('tools', async (state) => {
@@ -396,7 +674,15 @@ function buildGraph(options: {
           continue
         }
 
+        options.ctx.toolCalls.push({ type: 'tool', name: call.name, status: 'start' })
+
+        const toolStartedAt = Date.now()
         const output = await tool.run(call.args)
+        const durationMs = Date.now() - toolStartedAt
+
+        options.ctx.toolCalls.push({ type: 'tool', name: call.name, status: 'done' })
+        options.ctx.logger.info('tool_done', { name: call.name, durationMs })
+
         messages.push(new ToolMessage({ content: output, tool_call_id: call.id }))
         toolsUsed.push(call.name)
       }

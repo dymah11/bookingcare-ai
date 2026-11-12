@@ -92,6 +92,12 @@ pnpm eval           # scripts/eval.ts → chấm chất lượng câu trả lờ
 | Chunking | 1 thực thể = 1 chunk; mô tả dài cắt theo câu, mỗi chunk ≤ ~500 token, luôn kèm tên |
 | Metadata | `type`, `id`, `name`, `specialty`, `area`, `url`, `specialtyIds` |
 | Xếp hạng | BM25 bỏ dấu + BM25 có dấu + embedding (`gemini-embedding-001`) |
+
+> **Quota embedding**: free tier Gemini cho phép **100 embed-content/phút** (tính theo
+> số văn bản, không theo số HTTP request). `pnpm index` tự nhịp độ theo
+> `EMBEDDING_RATE_PER_MINUTE` và retry khi gặp 429. Muốn dựng index nhanh (chỉ
+> BM25, không tốn quota) thì đặt `INDEX_EMBEDDINGS=false` — lỗi embedding **không**
+> làm hỏng việc dựng index.
 | Gộp | Reciprocal Rank Fusion (k = 60) |
 | Lưu trữ | `data/processed/retrieval-index.json` — nạp nhanh lúc khởi động, không dùng DB ngoài |
 
@@ -101,13 +107,24 @@ dùng chung đúng một code path.
 ## Agent (LangGraph)
 
 Trợ lý hội thoại nằm ở `apps/api/src/agent`, chạy trên **Gemini**
-(`GEMINI_MODEL`, mặc định `gemini-2.5-flash`; `maxOutputTokens: 500`, suy luận theo
-`GEMINI_THINKING_LEVEL` cho dòng Gemini 3+ hoặc `GEMINI_THINKING_BUDGET` cho dòng 2.5).
+(`GEMINI_MODEL`, mặc định `gemini-3.8-flash`; `maxOutputTokens: 500`, suy luận theo
+`GEMINI_THINKING_LEVEL` cho dòng 3.x — viết HOA `LOW`/`MEDIUM`/`HIGH`).
 
-> Tham số suy luận được gửi qua kênh passthrough `modelKwargs` của
-> `@langchain/google-genai`. Nếu model của bạn không nhận tham số này, API vẫn
-> chạy bình thường (chỉ mất phần suy luận) — đặt `GEMINI_THINKING_BUDGET=0` để
-> tắt hẳn.
+> `gemini-2.5-flash` không dùng được với key mới (404 "no longer available to new users").
+
+```bash
+pnpm models   # liệt kê model id mà key được cấp quyền — không tốn quota
+```
+
+`GEMINI_MODEL_FALLBACKS` khai báo các model dự phòng (dấu phẩy phân tách); khi
+model chính lỗi 503/429/404, agent chuyển sang model kế tiếp (503 còn thử lại cùng
+model một lần sau 2s vì thường chỉ quá tải tạm thời). Nếu để trống, API **tự dò**
+model dùng được qua `GET /v1beta/models` — lệnh này không tốn quota.
+
+> Tham số suy luận được truyền qua field `thinkingConfig` của
+> `@langchain/google-genai` (dòng Gemini 3+ dùng `thinkingLevel` viết HOA:
+> `LOW`/`MEDIUM`/`HIGH`). Nếu model của bạn không nhận `MEDIUM`, đặt
+> `GEMINI_THINKING_LEVEL=low` trong `.env`.
 
 **Tool** (mô tả tiếng Việt, validate bằng zod):
 
@@ -131,6 +148,24 @@ System prompt nằm ở [`apps/api/prompts/system.vi.md`](apps/api/prompts/syste
 tiếng Việt, chỉ dựa trên dữ liệu truy xuất, nói rõ khi không có dữ liệu, không
 chẩn đoán/kê đơn, nhắc gọi cấp cứu (115) khi có dấu hiệu khẩn cấp, từ chối câu hỏi
 ngoài phạm vi, hỏi lại khi thiếu thông tin.
+
+### Hạn mức Gemini (gói miễn phí)
+
+| Model | RPM | RPD |
+| --- | --- | --- |
+| Gemini 3.8 Flash (trợ lý + judge) | **5** | **20** |
+| Gemini Embedding 1 | 100 | 1000 |
+
+Một lượt hội thoại tốn **1–3 request model** → free tier chỉ đủ **~7–20 lượt/ngày**,
+và mỗi lượt phải chờ hạn mức 5 request/phút. Vì vậy:
+
+- **Pre-retrieval**: trước khi gọi model, hệ thống tự tìm dữ liệu bằng BM25 (không
+  gọi API) rồi đưa vào prompt → lượt tìm kiếm thường chỉ cần **1 request model**.
+- `GEMINI_THINKING_LEVEL=low` nếu cần tốc độ (thinking là phần tốn thời gian nhất).
+- Khi hết quota, API trả sự kiện `error` với thông báo rõ ràng.
+
+Muốn dùng nhiều hơn thì cần API trả phí — hạn mức free tier không đủ cho
+một trợ lý dùng thật.
 
 ### CLI
 

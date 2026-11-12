@@ -26,6 +26,7 @@
     "crawl": "pnpm --filter @bookingcare/scripts crawl",
     "seed": "pnpm --filter @bookingcare/scripts seed",
     "index": "pnpm --filter @bookingcare/scripts index",
+    "models": "pnpm --filter @bookingcare/scripts models",
     "eval": "pnpm --filter @bookingcare/scripts eval",
     "eval:retrieval": "pnpm --filter @bookingcare/scripts eval:retrieval",
     "chat": "pnpm --filter @bookingcare/api chat",

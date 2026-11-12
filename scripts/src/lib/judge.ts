@@ -20,6 +20,9 @@ export type JudgeVerdict = {
   reason: string
 }
 
+/** Ngân sách output cho judge — cũng dùng để clamp `thinkingBudget`. */
+const JUDGE_MAX_OUTPUT_TOKENS = 800
+
 export type KeywordCheck = {
   passed: boolean
   missing: string[]
@@ -90,7 +93,12 @@ export async function judgeWithModel(options: {
     systemInstruction: JUDGE_SYSTEM_PROMPT,
     prompt: JSON.stringify(options.input),
     json: true,
-    thinkingConfig: buildThinkingConfig(options.env.GEMINI_JUDGE_MODEL, options.env),
+    maxOutputTokens: JUDGE_MAX_OUTPUT_TOKENS,
+    thinkingConfig: buildThinkingConfig(
+      options.env.GEMINI_JUDGE_MODEL,
+      options.env,
+      JUDGE_MAX_OUTPUT_TOKENS,
+    ),
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   })
 

@@ -11,7 +11,7 @@ import type { BookingDraftStore } from '../booking/drafts.js'
 import type { EntityCatalog } from '../retrieval/catalog.js'
 import type { RetrievalStore } from '../retrieval/store.js'
 import type { ChatSession } from './session.js'
-import type { BookingEvent, ResultCard } from './types.js'
+import type { BookingEvent, ResultCard, ToolCallEvent } from './types.js'
 
 /** Ngân sách ký tự cho kết quả tool — giữ tổng input token thấp. */
 const MAX_TOOL_RESULT_CHARS = 1600
@@ -26,6 +26,8 @@ export type ToolContext = {
   cards: ResultCard[]
   /** Sự kiện booking tích luỹ trong lượt này. */
   bookings: BookingEvent[]
+  /** Tool đang chạy / đã chạy — để UI hiện tiến trình. */
+  toolCalls: ToolCallEvent[]
 }
 
 /**
@@ -109,7 +111,8 @@ export const createBookingDraftSchema = z.object({
     .describe('Chỉ đặt true sau khi người dùng đã xác nhận rõ ràng.'),
 })
 
-function toCard(hit: SearchResult): ResultCard {
+/** Chuyển kết quả tìm kiếm thành thẻ hiển thị cho UI. */
+export function searchResultToCard(hit: SearchResult): ResultCard {
   const fields: { label: string; value: string }[] = []
   if (hit.specialty !== '') fields.push({ label: 'Chuyên khoa', value: hit.specialty })
   if (hit.area !== '') fields.push({ label: 'Khu vực', value: hit.area })
@@ -195,7 +198,7 @@ async function runSearch(
     return `Không tìm thấy ${label} nào khớp "${query}" trong dữ liệu hiện có. Hãy nói rõ với người dùng rằng chưa có dữ liệu và gợi ý họ xem trực tiếp trên bookingcare.vn.`
   }
 
-  ctx.cards.push(...hits.map(toCard))
+  ctx.cards.push(...hits.map(searchResultToCard))
 
   const lines = hits.map(
     (hit, index) =>

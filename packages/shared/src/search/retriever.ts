@@ -10,6 +10,13 @@ export type SearchFilters = {
   specialty?: string
   area?: string
   k?: number
+  /**
+   * Có dùng nhánh embedding hay không.
+   *
+   * Tắt (`false`) để tìm kiếm chạy tức thì, chỉ dùng BM25 — hữu ích cho
+   * bước tiền truy xuất (pre-retrieval) vì không muốn tốn thêm 1 request API.
+   */
+  embeddings?: boolean
 }
 
 /** Kết quả đã rút gọn — chỉ còn field cần thiết cho UI/RAG. */
@@ -25,8 +32,29 @@ export type SearchResult = {
 }
 
 const SNIPPET_LENGTH = 220
-const CANDIDATE_MULTIPLIER = 10
-const MIN_CANDIDATES = 50
+
+/**
+ * Timeout cho lệnh gọi embedding của câu truy vấn.
+ *
+ * Embedding là nhánh *bổ sung* cho BM25 — nếu API chậm hoặc kẹt, ta bỏ qua
+ * nhánh đó thay vì bắt người dùng chờ.
+ */
+const EMBEDDING_TIMEOUT_MS = 5000
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms)
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch(() => {
+        clearTimeout(timer)
+        resolve(null)
+      })
+  })
+}
 
 export type HybridRetrieverOptions = {
   chunks: Chunk[]
@@ -75,19 +103,21 @@ export class HybridRetriever {
       this.rankByScore(scoreQuery(this.bm25Accented, tokenizeAccented(query))),
     ]
 
-    const embeddingRanking = await this.rankByEmbedding(query)
+    const embeddingRanking =
+      filters.embeddings === false ? null : await this.rankByEmbedding(query)
     if (embeddingRanking !== null) {
       rankings.push(embeddingRanking)
     }
 
     const fused = reciprocalRankFusion(rankings)
     const ranked = [...fused.entries()].sort((left, right) => right[1] - left[1])
-    const candidates = ranked.slice(0, Math.max(k * CANDIDATE_MULTIPLIER, MIN_CANDIDATES))
 
+    // Lọc TRƯỚC khi cắt danh sách — nếu cắt trước, các bản ghi khớp bộ lọc
+    // nhưng xếp hạng thấp sẽ bị mất và kết quả ra rỗng.
     const results: SearchResult[] = []
     const seenEntities = new Set<string>()
 
-    for (const [chunkId, score] of candidates) {
+    for (const [chunkId, score] of ranked) {
       const chunk = this.chunkById.get(chunkId)
       if (chunk === undefined) continue
       if (!matchesFilters(chunk, filters)) continue
@@ -112,8 +142,8 @@ export class HybridRetriever {
     if (this.embeddings.length === 0 || this.embeddings.length !== this.chunks.length) return null
 
     try {
-      const vector = await this.embedder.embed(query)
-      if (vector.length === 0) return null
+      const vector = await withTimeout(this.embedder.embed(query), EMBEDDING_TIMEOUT_MS)
+      if (vector === null || vector.length === 0) return null
       return rankByEmbedding(vector, this.embeddings, this.chunkIds, this.chunks.length)
     } catch {
       // Embedding lỗi → bỏ qua, vẫn trả kết quả từ BM25.

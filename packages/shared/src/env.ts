@@ -17,23 +17,46 @@ export const envSchema = z.object({
   /** API key của Google AI Studio / Gemini. Một key dùng cho cả 3 vai trò. */
   GEMINI_API_KEY: z.string().default(''),
   /** Model trợ lý hội thoại. */
-  GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+  /**
+   * Danh sách model dự phòng, cách nhau bằng dấu phẩy. Khi model chính lỗi
+   * (503 quá tải, 429 hết quota, 404 model không còn dùng được) sẽ thử lần lượt
+   * các model này.
+   */
+  GEMINI_MODEL_FALLBACKS: z.string().default(''),
   /** Model judge dùng khi chấm chất lượng. */
-  GEMINI_JUDGE_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+  GEMINI_JUDGE_MODEL: z.string().min(1).default('gemini-3.8-flash'),
   /** Model embedding cho tìm kiếm lai (BM25 + vector). */
   GEMINI_EMBEDDING_MODEL: z.string().min(1).default('gemini-embedding-001'),
   /**
-   * Mức reasoning cho dòng Gemini 3+ (`thinkingConfig.thinkingLevel`).
-   * Bỏ trống nếu model của bạn là dòng 2.5 — dùng `GEMINI_THINKING_BUDGET`.
+   * Bật/tắt nhánh embedding khi dựng index.
+   * Tắt → index chỉ dùng BM25 (dựng tức thì, không gọi API, không tốn quota).
    */
-  GEMINI_THINKING_LEVEL: z.enum(['low', 'medium', 'high']).optional(),
+  INDEX_EMBEDDINGS: z.enum(['true', 'false']).default('true'),
+  /**
+   * Quota embed-content mỗi phút (free tier của Gemini là 100).
+   * Giảm nếu gặp lỗi 429.
+   */
+  EMBEDDING_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(6000).default(100),
+  /**
+   * Mức reasoning cho dòng Gemini 3+ (`thinkingConfig.thinkingLevel`).
+   * API nhận giá trị viết HOA — hàm `buildThinkingConfig()` tự chuyển.
+   * Bỏ qua nếu model của bạn thuộc dòng 2.5 (dùng `GEMINI_THINKING_BUDGET`).
+   */
+  GEMINI_THINKING_LEVEL: z.enum(['low', 'medium', 'high']).default('medium'),
   /**
    * Ngân sách suy luận cho dòng Gemini 2.5 (`thinkingConfig.thinkingBudget`).
-   * `0` = tắt suy luận.
+   * Phải nhỏ hơn `maxOutputTokens` (500) — sẽ được clamp tự động. `0` = tắt suy luận.
    */
-  GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).default(1024),
+  GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).default(256),
   /** Số lượt hội thoại gần nhất được giữ nguyên văn trong lịch sử. */
   CHAT_HISTORY_TURNS: z.coerce.number().int().min(1).max(50).default(6),
+  /**
+   * Câu hỏi tra cứu (tìm bệnh viện / bác sĩ / dịch vụ) được trả thẳng từ
+   * index mà không gọi model — 0 request, tức thì. Tắt đi nếu muốn mọi lượt
+   * đều do Gemini trả lời (tốn quota hơn nhiều).
+   */
+  ASSISTANT_DIRECT_SEARCH: z.enum(['true', 'false']).default('true'),
 
   DATA_DIR: z.string().min(1).default('./data'),
   BOOKINGCARE_BASE_URL: z.string().url().default('https://bookingcare.vn'),

@@ -12,7 +12,9 @@
     "predev": "tsc -b ../../packages/shared",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "prechat": "tsc -b ../../packages/shared",
     "chat": "tsx src/cli/chat.ts",
+    "preeval:chat": "tsc -b ../../packages/shared",
     "eval:chat": "tsx src/cli/eval-chat.ts",
     "test": "vitest run"
   },

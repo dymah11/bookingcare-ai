@@ -6,9 +6,11 @@ describe('loadEnv', () => {
     const env = loadEnv({ PORT: '', GEMINI_API_KEY: '' })
     expect(env.PORT).toBe(3001)
     expect(env.GEMINI_API_KEY).toBe('')
-    expect(env.GEMINI_MODEL).toBe('gemini-2.5-flash')
-    expect(env.GEMINI_JUDGE_MODEL).toBe('gemini-2.5-flash')
+    expect(env.GEMINI_MODEL).toBe('gemini-3.8-flash')
+    expect(env.GEMINI_JUDGE_MODEL).toBe('gemini-3.8-flash')
     expect(env.GEMINI_EMBEDDING_MODEL).toBe('gemini-embedding-001')
+    expect(env.GEMINI_THINKING_LEVEL).toBe('medium')
+    expect(env.GEMINI_THINKING_BUDGET).toBe(256)
   })
 
   it('parse được số và enum', () => {
@@ -30,8 +32,22 @@ describe('loadEnv', () => {
     expect(env.GEMINI_THINKING_BUDGET).toBe(2048)
   })
 
-  it('GEMINI_THINKING_LEVEL mặc định là undefined', () => {
-    expect(loadEnv({}).GEMINI_THINKING_LEVEL).toBeUndefined()
+  it('GEMINI_THINKING_LEVEL mặc định là medium', () => {
+    expect(loadEnv({}).GEMINI_THINKING_LEVEL).toBe('medium')
+  })
+
+  it('đọc được cờ bật embedding và quota mỗi phút', () => {
+    const env = loadEnv({ INDEX_EMBEDDINGS: 'false', EMBEDDING_RATE_PER_MINUTE: '60' })
+
+    expect(env.INDEX_EMBEDDINGS).toBe('false')
+    expect(env.EMBEDDING_RATE_PER_MINUTE).toBe(60)
+  })
+
+  it('mặc định bật embedding với quota 100/phút', () => {
+    const env = loadEnv({})
+
+    expect(env.INDEX_EMBEDDINGS).toBe('true')
+    expect(env.EMBEDDING_RATE_PER_MINUTE).toBe(100)
   })
 
   it('ném lỗi khi cấu hình sai', () => {

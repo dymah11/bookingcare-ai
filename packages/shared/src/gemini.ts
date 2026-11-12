@@ -4,25 +4,24 @@ import type { Env } from './env.js'
 export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
- * Tham số suy luận cho Gemini.
+ * Tham số suy luận cho Gemini (phần trong `generationConfig`).
  *
- * Dòng Gemini 3+ nhận `thinkingConfig.thinkingLevel` (low | medium | high);
- * dòng Gemini 2.5 nhận `thinkingConfig.thinkingBudget` (số token).
+ * Dòng Gemini 3+ nhận `thinkingLevel` — API nhận giá trị **viết HOA**:
+ * `LOW` | `MEDIUM` | `HIGH`. Dòng Gemini 2.5 nhận `thinkingBudget` (số token).
  * Chọn theo tên model để không gửi tham số không hợp lệ.
  */
 export function buildThinkingConfig(
   model: string,
   env: Env,
+  maxOutputTokens = 500,
 ): Record<string, unknown> | undefined {
   if (/^gemini-3/i.test(model)) {
-    return env.GEMINI_THINKING_LEVEL === undefined
-      ? undefined
-      : { thinkingConfig: { thinkingLevel: env.GEMINI_THINKING_LEVEL } }
+    return { thinkingLevel: env.GEMINI_THINKING_LEVEL.toUpperCase() }
   }
 
-  return env.GEMINI_THINKING_BUDGET > 0
-    ? { thinkingConfig: { thinkingBudget: env.GEMINI_THINKING_BUDGET } }
-    : undefined
+  // Gemini 2.5 yêu cầu thinkingBudget < maxOutputTokens, nên clamp theo budget output.
+  const budget = Math.min(env.GEMINI_THINKING_BUDGET, Math.max(0, maxOutputTokens - 1))
+  return budget > 0 ? { thinkingBudget: budget } : undefined
 }
 
 const generateContentResponseSchema = z.object({
@@ -36,6 +35,63 @@ const generateContentResponseSchema = z.object({
     )
     .min(1),
 })
+
+const modelsResponseSchema = z.object({
+  models: z.array(
+    z.object({
+      name: z.string(),
+      displayName: z.string().optional(),
+      supportedGenerationMethods: z.array(z.string()).optional(),
+    }),
+  ),
+})
+
+export type AvailableModel = {
+  /** Id dùng được trong request, ví dụ "gemini-3.8-flash". */
+  id: string
+  displayName: string
+  /** true nếu model hỗ trợ generateContent (tức dùng được cho chat). */
+  supportsChat: boolean
+  supportsEmbedding: boolean
+}
+
+/**
+ * Liệt kê model mà key được cấp quyền.
+ *
+ * Gọi `GET /v1beta/models` **không tốn quota**, nên đây là cách nhanh nhất
+ * để biết chính xác model id nào dùng được (thay vì đoán rồi ăn 404).
+ */
+export async function listModels(
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AvailableModel[]> {
+  const response = await fetchImpl(`${GEMINI_API_BASE}/models?pageSize=200`, {
+    headers: { 'x-goog-api-key': apiKey },
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(
+      `Gemini list models lỗi (HTTP ${response.status}): ${detail.slice(0, 500)}`,
+    )
+  }
+
+  const payload = (await response.json()) as unknown
+  const parsed = modelsResponseSchema.safeParse(payload)
+  if (!parsed.success) {
+    throw new Error('Gemini list models trả về payload không đúng schema')
+  }
+
+  return parsed.data.models.map((model) => {
+    const methods = model.supportedGenerationMethods ?? []
+    return {
+      id: model.name.replace(/^models\//, ''),
+      displayName: model.displayName ?? model.name.replace(/^models\//, ''),
+      supportsChat: methods.includes('generateContent'),
+      supportsEmbedding: methods.includes('embedContent'),
+    }
+  })
+}
 
 export type GenerateContentOptions = {
   apiKey: string
@@ -62,7 +118,10 @@ export async function generateContent(options: GenerateContentOptions): Promise<
     ...(options.maxOutputTokens === undefined
       ? {}
       : { maxOutputTokens: options.maxOutputTokens }),
-    ...(options.thinkingConfig ?? {}),
+    // `thinkingConfig` là object lồng bên trong `generationConfig`.
+    ...(options.thinkingConfig === undefined
+      ? {}
+      : { thinkingConfig: options.thinkingConfig }),
   }
 
   const body: Record<string, unknown> = {

@@ -40,8 +40,14 @@ async function runInteractive(runtime: Runtime): Promise<void> {
     })) {
       if (event.type === 'delta') {
         process.stdout.write(event.text)
+      } else if (event.type === 'status') {
+        process.stdout.write(`\n  [${event.phase}] ${event.label}\n`)
       } else if (event.type === 'cards') {
         cards.push(...event.cards)
+      } else if (event.type === 'tool') {
+        if (event.status === 'start') {
+          process.stdout.write(`\n  · đang gọi ${event.name}…\n`)
+        }
       } else if (event.type === 'booking') {
         bookings.push(event.booking)
       }

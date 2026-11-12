@@ -68,6 +68,13 @@ describe('chunkEntity', () => {
     expect(chunks[0]?.id).toBe('facility-bv-1#0')
   })
 
+  it('đưa tên chuyên khoa vào text để BM25 so khớp được', () => {
+    const chunk = chunkEntity(facility)[0]
+
+    expect(chunk?.text).toContain('tim mach')
+    expect(chunk?.text).toContain('Hà Nội')
+  })
+
   it('metadata chứa type, id, tên, chuyên khoa, khu vực, url', () => {
     const chunk = chunkEntity(facility)[0]
 

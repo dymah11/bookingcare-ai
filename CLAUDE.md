@@ -25,17 +25,41 @@ Toàn bộ suy luận dùng **Google Gemini** (một API key cho cả 3 vai trò
 
 | Vai trò | Model (mặc định) | Reasoning |
 | --- | --- | --- |
-| Trợ lý (assistant) | `gemini-2.5-flash` | `GEMINI_THINKING_LEVEL` / `GEMINI_THINKING_BUDGET` |
-| Judge (eval) | `gemini-2.5-flash` | như trên |
+| Trợ lý (assistant) | `gemini-3.8-flash` | `GEMINI_THINKING_LEVEL` (3.x) |
+| Judge (eval) | `gemini-3.8-flash` | như trên |
 | Embedding (truy xuất) | `gemini-embedding-001` | — |
 
 Model ID đọc từ biến môi trường `GEMINI_MODEL` / `GEMINI_JUDGE_MODEL` /
 `GEMINI_EMBEDDING_MODEL` (xem `.env.example`), không hardcode trong mã nguồn.
 
-**Suy luận:** dòng Gemini 3+ dùng `thinkingConfig.thinkingLevel`
-(`low` | `medium` | `high`), dòng Gemini 2.5 dùng `thinkingConfig.thinkingBudget`
-(số token). `buildThinkingConfig()` trong `packages/shared/src/gemini.ts` chọn đúng
-tham số theo tên model để không gửi tham số không hợp lệ.
+> `gemini-2.5-flash` trả **404 "no longer available to new users"** với key mới —
+> dòng 2.5 không dùng được nữa, hãy dùng dòng 3.x trở lên.
+
+**Suy luận:** dòng Gemini 3+ dùng `thinkingConfig.thinkingLevel` (API nhận giá trị
+viết HOA: `LOW` | `MEDIUM` | `HIGH`), dòng Gemini 2.5 dùng
+`thinkingConfig.thinkingBudget` (số token, **phải nhỏ hơn `maxOutputTokens`**).
+`buildThinkingConfig()` trong `packages/shared/src/gemini.ts` chọn đúng tham số
+theo tên model và clamp budget theo ngân sách output.
+
+**Model dự phòng:** `GEMINI_MODEL_FALLBACKS` (danh sách cách nhau bằng dấu phẩy).
+Khi model chính lỗi 503/429/404, agent chuyển sang model kế tiếp; 503 còn được thử
+lại **cùng model** một lần sau 2s vì thường chỉ quá tải tạm thời. Nếu
+`GEMINI_MODEL_FALLBACKS` để trống, API tự dò model dùng được qua `GET /v1beta/models`
+(**không tốn quota**). Chạy `pnpm models` để xem danh sách.
+
+### Hạn mức (gói Gemini miễn phí)
+
+| Model | RPM | RPD |
+| --- | --- | --- |
+| Gemini 3.8 Flash (trợ lý, judge) | **5** | **20** |
+| Gemini Embedding 1 | 100 | 1000 |
+
+Một lượt hội thoại tốn 1–3 request model → free tier chỉ được **~7–20 lượt/ngày**.
+Khi gặp 429, API trả sự kiện `error` kèm giải thích rõ thay vì lỗi chung chung.
+Muốn dùng thật thì cần API trả phí.
+
+> `gemini-2.5-flash` đã bị gỡ cho tài khoản mới — API trả 404 kèm gợi ý dùng
+> `gemini-3.8-flash`.
 
 ## Ràng buộc mỗi lượt hội thoại
 
@@ -89,7 +113,7 @@ eval/           # cases + results
 
 ## Agent (apps/api/src/agent)
 
-- **Model**: Gemini (`GEMINI_MODEL`, mặc định `gemini-2.5-flash`), `maxOutputTokens: 500`,
+- **Model**: Gemini (`GEMINI_MODEL`, mặc định `gemini-3.8-flash`), `maxOutputTokens: 500`,
   suy luận theo `GEMINI_THINKING_LEVEL` / `GEMINI_THINKING_BUDGET`.
 - **System prompt**: [`apps/api/prompts/system.vi.md`](apps/api/prompts/system.vi.md) —
   tiếng Việt, chỉ dựa trên dữ liệu truy xuất, nói rõ khi không có dữ liệu,
@@ -103,6 +127,13 @@ eval/           # cases + results
   - Kết quả tool **rút gọn** (tên + chuyên khoa + khu vực + link) để giữ input ≤ 30k token.
   - Lịch sử: giữ **N lượt gần nhất** + **bản tóm tắt** các lượt cũ hơn
     (`CHAT_HISTORY_TURNS`), không nhồi toàn bộ.
+  - **Pre-retrieval**: trước khi gọi model, hệ thống tự tìm dữ liệu bằng BM25
+    (không gọi API) và đưa vào prompt. Lượt tìm kiếm thường chỉ cần **1 request
+    model** thay vì 2 — quan trọng vì quota Gemini free tier rất thấp.
+  - **Fast path** (`ASSISTANT_DIRECT_SEARCH`, mặc định bật): câu hỏi tra cứu
+    (nhận diện bằng heuristic trong `agent/intent.ts`) được trả thẳng danh sách
+    từ index — **0 request model**, tức thì. Câu hỏi cần suy luận/tư vấn mới
+    gọi model.
 - **Đặt lịch là mô phỏng**: `create_booking_draft` gọi lần đầu với `confirm=false`
   để xin xác nhận; chỉ tạo draft khi gọi lại với `confirm=true`. Draft lưu ở
   `data/processed/booking-drafts.json` và trả **mã booking** + link bookingcare.vn.

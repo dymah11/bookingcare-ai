@@ -82,11 +82,33 @@ export type BookingEvent = {
   time: string
 }
 
+/** Sự kiện tool đang chạy — để UI không đứng im trong lúc model suy luận. */
+export type ToolCallEvent = {
+  type: 'tool'
+  name: string
+  status: 'start' | 'done'
+}
+
+/**
+ * Trạng thái tiến trình của lượt trò chuyện.
+ *
+ * `thinking` = model đang suy luận (chọn tool hoặc soạn câu trả lời) —
+ * đây là lúc không có token nào được stream ra, nên UI cần biết để không
+ * tưởng là treo.
+ */
+export type ChatStatusEvent = {
+  type: 'status'
+  phase: 'thinking' | 'tool' | 'answering'
+  label: string
+}
+
 /** Các sự kiện SSE của `POST /api/chat`. */
 export type ChatEvent =
   | { type: 'meta'; sessionId: string; requestId: string }
+  | { type: 'status'; phase: 'thinking' | 'tool' | 'answering'; label: string }
   | { type: 'delta'; text: string }
   | { type: 'cards'; cards: ResultCard[] }
+  | { type: 'tool'; name: string; status: 'start' | 'done' }
   | { type: 'booking'; booking: BookingEvent }
   | { type: 'done'; usage: ChatUsage }
   | { type: 'error'; message: string }

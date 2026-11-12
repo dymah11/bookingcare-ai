@@ -62,8 +62,14 @@ export function enrichSpecialtyLabels(
     const labels = chunk.metadata.specialtyIds.map(
       (id) => nameById.get(id) ?? specialtyLabel([id]),
     )
+    const specialty = labels.join(', ')
 
-    return { ...chunk, metadata: { ...chunk.metadata, specialty: labels.join(', ') } }
+    // Cập nhật cả text: bản BM25 "có dấu" cần đúng "Tim mạch" chứ không
+    // phải slug "tim mach".
+    const slugForm = specialtyLabel(chunk.metadata.specialtyIds)
+    const text = slugForm === '' ? chunk.text : chunk.text.replace(slugForm, specialty)
+
+    return { ...chunk, text, metadata: { ...chunk.metadata, specialty } }
   })
 }
 
@@ -96,7 +102,13 @@ function splitSentences(text: string): string[] {
 export function chunkEntity(entity: CrawledEntity, maxTokens = MAX_CHUNK_TOKENS): Chunk[] {
   const metadata = buildMetadata(entity)
   const description = cleanText(entity.description)
-  const prefix = metadata.area === '' ? metadata.name : `${metadata.name} — ${metadata.area}`
+
+  // Tên chuyên khoa phải nằm trong text để BM25 so khớp được: nếu chỉ có ở
+  // metadata thì câu "bệnh viện có khoa tim mạch" không xếp được cơ sở có khoa
+  // đó (trừ khi tên cơ sở chứa "tim mạch").
+  const prefix = [metadata.name, metadata.specialty, metadata.area]
+    .filter((part) => part !== '')
+    .join(' — ')
 
   if (description === '') {
     return [{ id: `${entity.id}#0`, text: prefix, metadata }]

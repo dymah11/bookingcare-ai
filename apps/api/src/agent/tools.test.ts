@@ -24,6 +24,7 @@ async function buildContext(): Promise<ToolContext> {
     session,
     cards: [],
     bookings: [],
+    toolCalls: [],
   }
 }
 

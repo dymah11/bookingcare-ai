@@ -5,7 +5,13 @@ import {
   ENTITY_FILE_NAMES,
   type CrawledEntity,
   type EntityType,
+  type FacilityEntity,
 } from '@bookingcare/shared'
+
+/** Bỏ tiền tố hành chính: "TP. Hồ Chí Minh" → "Hồ Chí Minh". */
+export function stripCityPrefix(city: string): string {
+  return city.replace(/^(tp\.?|thành phố|thành|tỉnh|province|city)\s+/i, '').trim()
+}
 
 /**
  * Catalog thực thể đầy đủ, nạp từ `data/processed/{type}.json`.
@@ -33,6 +39,29 @@ export class EntityCatalog {
   list(type?: EntityType): CrawledEntity[] {
     const all = [...this.entities.values()]
     return type === undefined ? all : all.filter((entity) => entity.type === type)
+  }
+
+  /**
+   * Tên các chuyên khoa trong catalog — dùng để nhận ra chuyên khoa mà người
+   * dùng hỏi tới và lọc kết quả theo đó.
+   */
+  specialtyNames(): string[] {
+    const names = this.list('specialty')
+      .map((entity) => entity.name)
+      .filter((name) => name !== '')
+    return [...new Set(names)]
+  }
+
+  /**
+   * Các tỉnh/thành trong catalog, đã bỏ tiền tố hành chính
+   * ("TP. Hồ Chí Minh" → "Hồ Chí Minh") để so khớp với câu hỏi tự nhiên.
+   */
+  cities(): string[] {
+    const cities = this.list('facility')
+      .filter((entity): entity is FacilityEntity => entity.type === 'facility')
+      .map((entity) => stripCityPrefix(entity.city))
+      .filter((city) => city !== '')
+    return [...new Set(cities)]
   }
 
   static async load(processedDir: string): Promise<EntityCatalog> {
