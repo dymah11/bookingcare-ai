@@ -1,0 +1,33 @@
+{
+  "name": "@bookingcare/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Data pipeline: crawl -> index -> eval",
+  "scripts": {
+    "prebuild": "tsc -b ../packages/shared",
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "precrawl": "tsc -b ../packages/shared",
+    "crawl": "tsx src/crawl.ts",
+    "crawl:install": "playwright install chromium",
+    "seed": "tsx src/seed.ts",
+    "index": "tsx src/index.ts",
+    "eval": "tsx src/eval.ts",
+    "eval:retrieval": "tsx src/eval-retrieval.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bookingcare/shared": "workspace:*",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.0",
+    "playwright": "^1.49.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}

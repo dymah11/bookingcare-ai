@@ -1,0 +1,37 @@
+{
+  "name": "@bookingcare/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Express API: search, Q&A and booking-draft endpoints",
+  "main": "./dist/index.js",
+  "scripts": {
+    "prebuild": "tsc -b ../../packages/shared",
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "predev": "tsc -b ../../packages/shared",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "chat": "tsx src/cli/chat.ts",
+    "eval:chat": "tsx src/cli/eval-chat.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bookingcare/shared": "workspace:*",
+    "@langchain/anthropic": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
+    "dotenv": "^16.4.0",
+    "express": "^5.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/supertest": "^6.0.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}

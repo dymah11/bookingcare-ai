@@ -1,0 +1,51 @@
+{
+  "name": "bookingcare-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI assistant for search, Q&A and appointment booking on public bookingcare.vn data",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "pnpm --filter @bookingcare/shared build && pnpm --filter @bookingcare/api build && pnpm --filter @bookingcare/scripts build && pnpm --filter @bookingcare/web build",
+    "build:solution": "tsc -b",
+    "dev": "pnpm --parallel --filter @bookingcare/api --filter @bookingcare/web dev",
+    "dev:api": "pnpm --filter @bookingcare/api dev",
+    "dev:web": "pnpm --filter @bookingcare/web dev",
+    "start": "pnpm --filter @bookingcare/api start",
+    "typecheck": "pnpm --filter @bookingcare/shared typecheck && pnpm --filter @bookingcare/api typecheck && pnpm --filter @bookingcare/scripts typecheck && pnpm --filter @bookingcare/web typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "crawl": "pnpm --filter @bookingcare/scripts crawl",
+    "seed": "pnpm --filter @bookingcare/scripts seed",
+    "index": "pnpm --filter @bookingcare/scripts index",
+    "eval": "pnpm --filter @bookingcare/scripts eval",
+    "eval:retrieval": "pnpm --filter @bookingcare/scripts eval:retrieval",
+    "chat": "pnpm --filter @bookingcare/api chat",
+    "eval:chat": "pnpm --filter @bookingcare/api eval:chat",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^3.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@bookingcare/shared": ["./packages/shared/src/index.ts"],
+      "@bookingcare/shared/node": ["./packages/shared/src/node/index.ts"]
+    }
+  },
+  "include": [
+    "eslint.config.js",
+    "vitest.config.ts",
+    "apps/*/vite.config.ts",
+    "apps/*/vitest.config.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/src/**/*.tsx",
+    "packages/*/vitest.config.ts",
+    "packages/*/src/**/*.ts",
+    "scripts/vitest.config.ts",
+    "scripts/src/**/*.ts"
+  ]
+}

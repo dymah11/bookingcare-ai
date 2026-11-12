@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "queries": [
+    {
+      "id": "rq-01",
+      "query": "chuyên khoa tim mạch",
+      "expected": [{ "name": "Tim mạch", "type": "specialty" }],
+      "tags": ["specialty"]
+    },
+    {
+      "id": "rq-02",
+      "query": "chuyen khoa noi khoa",
+      "expected": [{ "name": "Nội khoa", "type": "specialty" }],
+      "tags": ["specialty", "no-diacritics"]
+    },
+    {
+      "id": "rq-03",
+      "query": "chuyên khoa da lieu",
+      "expected": [{ "name": "Da liễu", "type": "specialty" }],
+      "tags": ["specialty", "no-diacritics"]
+    },
+    {
+      "id": "rq-04",
+      "query": "khoa nhi khoa",
+      "expected": [{ "name": "Nhi khoa", "type": "specialty" }],
+      "tags": ["specialty"]
+    },
+    {
+      "id": "rq-05",
+      "query": "chuyên khoa phụ sản",
+      "expected": [{ "name": "Phụ sản", "type": "specialty" }],
+      "tags": ["specialty"]
+    },
+    {
+      "id": "rq-06",
+      "query": "chuyên khoa tai mũi họng",
+      "expected": [{ "name": "Tai Mũi Họng", "type": "specialty" }],
+      "tags": ["specialty"]
+    },
+    {
+      "id": "rq-07",
+      "query": "bệnh viện đa khoa hà nội",
+      "expected": [{ "name": "Bệnh viện Mẫu Đa khoa Hà Nội", "type": "facility" }],
+      "tags": ["facility", "area"]
+    },
+    {
+      "id": "rq-08",
+      "query": "bệnh viện đa khoa tp hcm",
+      "expected": [{ "name": "Bệnh viện Mẫu Đa khoa TP.HCM", "type": "facility" }],
+      "tags": ["facility", "area"]
+    },
+    {
+      "id": "rq-09",
+      "query": "phòng khám đa khoa đà nẵng",
+      "expected": [{ "name": "Phòng khám Mẫu Đa khoa Đà Nẵng", "type": "facility" }],
+      "tags": ["facility", "area"]
+    },
+    {
+      "id": "rq-10",
+      "query": "trung tâm tim mạch",
+      "expected": [{ "name": "Trung tâm Mẫu Tim mạch", "type": "facility" }],
+      "tags": ["facility"]
+    },
+    {
+      "id": "rq-11",
+      "query": "bệnh viện nhi khoa",
+      "expected": [{ "name": "Bệnh viện Mẫu Nhi khoa", "type": "facility" }],
+      "tags": ["facility"]
+    },
+    {
+      "id": "rq-12",
+      "query": "bệnh viện phụ sản",
+      "expected": [{ "name": "Bệnh viện Mẫu Phụ sản", "type": "facility" }],
+      "tags": ["facility"]
+    },
+    {
+      "id": "rq-13",
+      "query": "bác sĩ chuyên khoa tim mạch",
+      "expected": [{ "name": "Bác sĩ Mẫu Nguyễn Văn An", "type": "doctor" }],
+      "tags": ["doctor"]
+    },
+    {
+      "id": "rq-14",
+      "query": "bác sĩ nội khoa thạc sĩ",
+      "expected": [{ "name": "Bác sĩ Mẫu Trần Thị Bình", "type": "doctor" }],
+      "tags": ["doctor"]
+    },
+    {
+      "id": "rq-15",
+      "query": "bác sĩ da liễu đà nẵng",
+      "expected": [{ "name": "Bác sĩ Mẫu Lê Hoàng Cường", "type": "doctor" }],
+      "tags": ["doctor", "area"]
+    },
+    {
+      "id": "rq-16",
+      "query": "bác sĩ phụ sản tư vấn thai khoa",
+      "expected": [{ "name": "Bác sĩ Mẫu Hoàng Minh Khang", "type": "doctor" }],
+      "tags": ["doctor"]
+    },
+    {
+      "id": "rq-17",
+      "query": "giá gói khám tim mạch",
+      "expected": [{ "name": "Gói khám Mẫu Tim mạch", "type": "service" }],
+      "tags": ["service", "price"]
+    },
+    {
+      "id": "rq-18",
+      "query": "gói khám da liễu",
+      "expected": [{ "name": "Gói khám Mẫu Da liễu", "type": "service" }],
+      "tags": ["service"]
+    },
+    {
+      "id": "rq-19",
+      "query": "gói khám nội khoa tổng quát",
+      "expected": [{ "name": "Gói khám Mẫu Nội khoa tổng quát", "type": "service" }],
+      "tags": ["service"]
+    },
+    {
+      "id": "rq-20",
+      "query": "gói khám nhi khoa",
+      "expected": [{ "name": "Gói khám Mẫu Nhi khoa", "type": "service" }],
+      "tags": ["service"]
+    }
+  ]
+}
